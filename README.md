@@ -9,7 +9,7 @@ Bridge your Tesla vehicle with TAK (Team Awareness Kit) servers for real-time po
 ![Tesla](https://img.shields.io/badge/Tesla-API-red.svg)
 ![Docker](https://github.com/joshuafuller/TeslaOnTarget/actions/workflows/docker-publish.yml/badge.svg)
 ![GitHub Container Registry](https://img.shields.io/badge/ghcr.io-ready-brightgreen)
-[DeepWiki](https://deepwiki.com/joshuafuller/TeslaOnTarget)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/joshuafuller/TeslaOnTarget)
 
 ## What is TeslaOnTarget?
 
