@@ -434,7 +434,7 @@ class TeslaCoT:
                 
                 # Check if autopilot_state is available
                 ap_state = relevant_data.get('autopilot_state')
-                if ap_state is None and drive_state.get('shift_state') in ['D', 'R']:
+                if ap_state is None and relevant_data.get('shift_state') in ['D', 'R']:
                     logger.warning("autopilot_state field not available in Tesla API response - FSD detection may not work")
                 
                 logger.info(f"Got vehicle data: lat={relevant_data.get('latitude')}, lon={relevant_data.get('longitude')}, speed={speed_display}, battery={relevant_data.get('battery_level')}%, autopilot_state={ap_state}, UID={relevant_data.get('UID')}, dead_reckoning={dr_status}")
