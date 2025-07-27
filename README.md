@@ -67,6 +67,9 @@ cp .env.example .env
 # Authenticate with Tesla
 docker run -it --env-file .env -v tesla_data:/data ghcr.io/joshuafuller/teslaontarget auth
 
+# Or minimal auth command (TAK_SERVER not required for auth):
+# docker run -it -e TESLA_USERNAME=your@email.com -v tesla_data:/data ghcr.io/joshuafuller/teslaontarget auth
+
 # Run TeslaOnTarget
 docker run -d --env-file .env -v tesla_data:/data -v tesla_logs:/logs \
   --name teslaontarget --restart unless-stopped \

@@ -13,7 +13,7 @@ create_config() {
     echo -e "${BLUE}Creating configuration from environment variables...${NC}"
     
     # Validate required variables
-    if [ -z "$TAK_SERVER" ]; then
+    if [ -z "$TAK_SERVER" ] && [ "$1" != "auth" ]; then
         echo -e "${RED}ERROR: TAK_SERVER environment variable is required${NC}"
         echo "Example: docker run -e TAK_SERVER=192.168.1.100 ..."
         exit 1
@@ -30,7 +30,7 @@ create_config() {
 # Auto-generated configuration from Docker environment variables
 
 # TAK Server Configuration
-COT_URL = "tcp://${TAK_SERVER}:${TAK_PORT}"
+COT_URL = "tcp://${TAK_SERVER:-localhost}:${TAK_PORT}"
 
 # Tesla Account
 TESLA_USERNAME = "${TESLA_USERNAME}"
