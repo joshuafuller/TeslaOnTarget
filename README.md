@@ -295,7 +295,6 @@ MIT License - see [LICENSE](LICENSE) file for details.
 ## 🙏 Acknowledgments
 
 - [TeslaPy](https://github.com/tdorssers/TeslaPy) - Tesla API Python implementation
-- [FreeTAK Team](https://github.com/FreeTAKTeam) - Open source TAK server
 - Tesla owners community for API documentation
 
 ## Disclaimer
