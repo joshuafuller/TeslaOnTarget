@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# Tesla/Security - DO NOT COMMIT THESE
+cache.json
+config.py
+last_known_position.json
+*.log
+*.pid
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.bak
+
+# OS
+.DS_Store
+Thumbs.db
+.Spotlight-V100
+.Trashes
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+.tox/
+
+# Docker
+.env
+docker-compose.override.yml
+
+# Debug captures
+tesla_api_captures/
+metrics/
+metrics.zip
+
+# Temporary files
+teslaontarget_live.log
+
+# Personal/Development files
+*.personal
+*.local
+*.tmp
+.development_files/
+.archive/

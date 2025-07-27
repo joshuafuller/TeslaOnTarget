@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  teslaontarget:
+    build: .
+    image: teslaontarget:latest
+    container_name: teslaontarget
+    restart: unless-stopped
+    environment:
+      # REQUIRED: Set these values
+      - TAK_SERVER=${TAK_SERVER:-192.168.1.100}  # Your TAK server IP
+      - TESLA_USERNAME=${TESLA_USERNAME}         # Your Tesla email
+      
+      # Optional: Customize these values
+      - TAK_PORT=${TAK_PORT:-8085}
+      - API_LOOP_DELAY=${API_LOOP_DELAY:-10}
+      - DEAD_RECKONING_ENABLED=${DEAD_RECKONING_ENABLED:-True}
+      - DEAD_RECKONING_DELAY=${DEAD_RECKONING_DELAY:-1}
+      - DEBUG_MODE=${DEBUG_MODE:-False}
+    volumes:
+      - tesla_data:/data      # Persistent storage for auth tokens
+      - tesla_logs:/logs      # Log files
+    networks:
+      - tak_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Optional: Run authentication separately
+  tesla-auth:
+    build: .
+    image: teslaontarget:latest
+    container_name: tesla-auth
+    stdin_open: true
+    tty: true
+    environment:
+      - TAK_SERVER=${TAK_SERVER:-192.168.1.100}
+      - TESLA_USERNAME=${TESLA_USERNAME}
+    volumes:
+      - tesla_data:/data
+    command: auth
+    profiles:
+      - auth
+
+volumes:
+  tesla_data:
+    name: teslaontarget_data
+  tesla_logs:
+    name: teslaontarget_logs
+
+networks:
+  tak_network:
+    driver: bridge

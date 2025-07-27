@@ -1,0 +1,22 @@
+# Configuration Template for TeslaOnTarget
+# Copy this file to config.py and update with your settings
+
+# TAK Server Configuration
+COT_URL = "tcp://YOUR_TAK_SERVER_IP:8085"  # Replace with your TAK server address
+
+# Tesla Account
+TESLA_USERNAME = "your-email@example.com"  # Your Tesla account email
+
+# Timing Configuration
+API_LOOP_DELAY = 10  # Seconds between Tesla API queries (minimum 10 recommended)
+DEAD_RECKONING_ENABLED = True  # Enable dead reckoning when GPS unavailable
+DEAD_RECKONING_DELAY = 1  # Seconds between dead reckoning updates
+
+# File Paths
+LAST_POSITION_FILE = "last_known_position.json"  # Cache file for last position
+
+# Debug Settings
+DEBUG_MODE = True  # Save all Tesla API responses to tesla_api_captures/ directory
+
+# Constants (don't change these)
+MPH_TO_MS = 0.44704  # Conversion factor from mph to m/s

@@ -1,0 +1,38 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Force LF for shell scripts
+*.sh text eol=lf
+docker-entrypoint.sh text eol=lf
+docker-run.sh text eol=lf
+teslaontarget.sh text eol=lf
+
+# Python files
+*.py text
+*.pyi text
+
+# Documentation
+*.md text
+*.txt text
+*.rst text
+
+# Config files
+*.json text
+*.yml text
+*.yaml text
+*.toml text
+*.ini text
+*.cfg text
+
+# Docker files
+Dockerfile text
+.dockerignore text
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary

@@ -1,0 +1,45 @@
+# Git files
+.git
+.gitignore
+
+# Python cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info
+dist
+build
+
+# Local configuration and data
+config.py
+cache.json
+last_known_position.json
+tesla_api_captures/
+metrics/
+
+# Logs
+*.log
+
+# IDE files
+.vscode
+.idea
+*.swp
+*.swo
+
+# Documentation (keep README.md for setup.py)
+docs/
+
+# Test files
+tests/
+pytest_cache/
+
+# Docker files (don't copy into image)
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Scripts (we use docker entrypoint instead)
+teslaontarget.sh
+scripts/
