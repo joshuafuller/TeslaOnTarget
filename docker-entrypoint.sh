@@ -117,6 +117,21 @@ case "$1" in
         # Create config
         create_config
         
+        # Fix permissions on volumes if we can
+        # This handles cases where volumes were created by root
+        if [ -w /data ]; then
+            touch /data/.write_test 2>/dev/null && rm -f /data/.write_test
+        else
+            echo -e "${YELLOW}Warning: /data is not writable by current user${NC}"
+        fi
+        
+        if [ -w /logs ]; then
+            touch /logs/.write_test 2>/dev/null && rm -f /logs/.write_test
+        else
+            echo -e "${YELLOW}Warning: /logs is not writable by current user${NC}"
+            echo -e "${YELLOW}Logs will be written to stdout only${NC}"
+        fi
+        
         # Link files to persistent volumes
         # Clean up any existing files/links first
         [ -f /app/cache.json ] && rm -f /app/cache.json
