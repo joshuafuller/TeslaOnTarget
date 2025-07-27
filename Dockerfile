@@ -1,42 +1,71 @@
-# Use Python slim image for smaller size
-FROM python:3.13-slim
+# syntax=docker/dockerfile:1.4
 
-# Set working directory
-WORKDIR /app
+# Build stage
+FROM python:3.11-slim AS builder
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
+    python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Set up build directory
+WORKDIR /build
 
-# Copy the entire project
-COPY . .
+# Copy and install dependencies
+COPY requirements.txt .
+RUN pip wheel --no-cache-dir --no-deps --wheel-dir /build/wheels -r requirements.txt
+
+# Runtime stage
+FROM python:3.11-slim
+
+# Add metadata labels
+LABEL org.opencontainers.image.title="TeslaOnTarget" \
+      org.opencontainers.image.description="Bridge Tesla vehicles with TAK servers for real-time position tracking" \
+      org.opencontainers.image.authors="Joshua Fuller" \
+      org.opencontainers.image.source="https://github.com/joshuafuller/TeslaOnTarget" \
+      org.opencontainers.image.licenses="MIT"
+
+# Create non-root user
+RUN useradd -m -s /bin/bash -u 1000 teslauser && \
+    mkdir -p /data /logs /app && \
+    chown -R teslauser:teslauser /data /logs /app
+
+WORKDIR /app
+
+# Copy wheels from builder and install
+COPY --from=builder /build/wheels /wheels
+RUN pip install --no-cache-dir /wheels/* && rm -rf /wheels
+
+# Copy application files with correct ownership
+COPY --chown=teslauser:teslauser . .
 
 # Install the package
-RUN pip install -e .
+RUN pip install --no-cache-dir -e .
 
-# Create directories for persistent data
-RUN mkdir -p /data /logs
+# Move entrypoint to root and ensure it's executable
+RUN cp /app/docker-entrypoint.sh / && chmod +x /docker-entrypoint.sh
+
+# Switch to non-root user
+USER teslauser
 
 # Environment variables for configuration
-ENV TESLA_USERNAME=""
-ENV TAK_SERVER=""
-ENV TAK_PORT="8085"
-ENV API_LOOP_DELAY="10"
-ENV DEAD_RECKONING_ENABLED="True"
-ENV DEAD_RECKONING_DELAY="1"
-ENV DEBUG_MODE="False"
+ENV TESLA_USERNAME="" \
+    TAK_SERVER="" \
+    TAK_PORT="8085" \
+    API_LOOP_DELAY="10" \
+    DEAD_RECKONING_ENABLED="True" \
+    DEAD_RECKONING_DELAY="1" \
+    DEBUG_MODE="False"
 
-# Volume for persistent data (cache.json, logs, captures)
+# Health check - directly call python to bypass entrypoint
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD ["/usr/local/bin/python", "-c", "import teslaontarget; print('healthy')"]
+
+# Volumes for persistent data
 VOLUME ["/data", "/logs"]
 
-# Copy entrypoint script
-COPY docker-entrypoint.sh /
-RUN chmod +x /docker-entrypoint.sh
+# No EXPOSE needed as we're a client, not a server
 
 # Default command
 ENTRYPOINT ["/docker-entrypoint.sh"]

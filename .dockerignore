@@ -1,16 +1,37 @@
 # Git files
-.git
+.git/
 .gitignore
+.gitattributes
+.github/
 
 # Python cache
-__pycache__
-*.pyc
-*.pyo
-*.pyd
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
 .Python
-*.egg-info
-dist
-build
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+*.egg-info/
+*.egg
+dist/
+build/
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.manifest
+*.spec
 
 # Local configuration and data
 config.py
@@ -18,28 +39,99 @@ cache.json
 last_known_position.json
 tesla_api_captures/
 metrics/
+*.db
+*.sqlite
+*.sqlite3
 
 # Logs
 *.log
+logs/
+*.out
+*.err
 
 # IDE files
-.vscode
-.idea
+.vscode/
+.idea/
 *.swp
 *.swo
+*~
+.project
+.pydevproject
+.settings/
+*.sublime-*
 
-# Documentation (keep README.md for setup.py)
+# Documentation
 docs/
+*.md
+!README.md
+LICENSE
+CONTRIBUTING.md
+CHANGELOG.md
+SECURITY.md
 
 # Test files
 tests/
-pytest_cache/
+coverage/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+*.cover
+.cache
+nosetests.xml
+coverage.xml
+*.py,cover
 
-# Docker files (don't copy into image)
-Dockerfile
-docker-compose.yml
+# Docker files
+Dockerfile*
+docker-compose*.yml
 .dockerignore
+docker-*.sh
+!docker-entrypoint.sh
 
-# Scripts (we use docker entrypoint instead)
+# Scripts and tools
 teslaontarget.sh
 scripts/
+tools/
+init-repo.sh
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+*.old
+tmp/
+temp/
+
+# CI/CD
+.travis.yml
+.gitlab-ci.yml
+azure-pipelines.yml
+appveyor.yml
+
+# Package managers
+poetry.lock
+Pipfile.lock
+requirements-dev.txt
+requirements-test.txt
+
+# Misc
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.pfx

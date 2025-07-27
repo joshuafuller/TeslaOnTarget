@@ -1,15 +1,23 @@
-version: '3.8'
-
 services:
   teslaontarget:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+      cache_from:
+        - teslaontarget:latest
     image: teslaontarget:latest
     container_name: teslaontarget
     restart: unless-stopped
+    user: teslauser
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       # REQUIRED: Set these values
-      - TAK_SERVER=${TAK_SERVER:-192.168.1.100}  # Your TAK server IP
-      - TESLA_USERNAME=${TESLA_USERNAME}         # Your Tesla email
+      - TAK_SERVER=${TAK_SERVER:?TAK_SERVER environment variable is required}
+      - TESLA_USERNAME=${TESLA_USERNAME:?TESLA_USERNAME environment variable is required}
       
       # Optional: Customize these values
       - TAK_PORT=${TAK_PORT:-8085}
@@ -18,28 +26,51 @@ services:
       - DEAD_RECKONING_DELAY=${DEAD_RECKONING_DELAY:-1}
       - DEBUG_MODE=${DEBUG_MODE:-False}
     volumes:
-      - tesla_data:/data      # Persistent storage for auth tokens
-      - tesla_logs:/logs      # Log files
+      - tesla_data:/data:rw      # Persistent storage for auth tokens
+      - tesla_logs:/logs:rw      # Log files
+    tmpfs:
+      - /run:rw,noexec,nosuid,size=64m
+      - /tmp:rw,noexec,nosuid,size=64m
     networks:
       - tak_network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import teslaontarget; print('healthy')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
+        labels: "service=teslaontarget"
 
   # Optional: Run authentication separately
   tesla-auth:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+      cache_from:
+        - teslaontarget:latest
     image: teslaontarget:latest
     container_name: tesla-auth
     stdin_open: true
     tty: true
+    user: teslauser
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       - TAK_SERVER=${TAK_SERVER:-192.168.1.100}
       - TESLA_USERNAME=${TESLA_USERNAME}
     volumes:
-      - tesla_data:/data
+      - tesla_data:/data:rw
+    tmpfs:
+      - /run:rw,noexec,nosuid,size=64m
+      - /tmp:rw,noexec,nosuid,size=64m
     command: auth
     profiles:
       - auth

@@ -79,6 +79,10 @@ case "$1" in
         create_config "auth"
         
         # Link cache file to persistent volume
+        # Since we're running as non-root, we need to ensure the link is created in a writable location
+        if [ -f /app/cache.json ]; then
+            rm -f /app/cache.json
+        fi
         ln -sf /data/cache.json /app/cache.json 2>/dev/null || true
         
         echo -e "${BLUE}Starting authentication process...${NC}"
@@ -114,16 +118,23 @@ case "$1" in
         create_config
         
         # Link files to persistent volumes
+        # Clean up any existing files/links first
+        [ -f /app/cache.json ] && rm -f /app/cache.json
+        [ -f /app/last_known_position.json ] && rm -f /app/last_known_position.json
+        [ -f /app/teslaontarget.log ] && rm -f /app/teslaontarget.log
+        [ -L /app/tesla_api_captures ] && rm -f /app/tesla_api_captures
+        
+        # Create symlinks
         ln -sf /data/cache.json /app/cache.json 2>/dev/null || true
         ln -sf /data/last_known_position.json /app/last_known_position.json 2>/dev/null || true
         
-        # Create log file in logs directory
-        touch /logs/teslaontarget.log
+        # Create log file in logs directory (ensure we can write to it)
+        touch /logs/teslaontarget.log 2>/dev/null || true
         ln -sf /logs/teslaontarget.log /app/teslaontarget.log 2>/dev/null || true
         
         # If debug mode is enabled, link captures directory
         if [ "$DEBUG_MODE" = "True" ]; then
-            mkdir -p /data/tesla_api_captures
+            mkdir -p /data/tesla_api_captures 2>/dev/null || true
             ln -sf /data/tesla_api_captures /app/tesla_api_captures 2>/dev/null || true
         fi
         
