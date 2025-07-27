@@ -27,7 +27,7 @@ jobs:
         awk '/^## \[/{if(p)exit;p=1;next} p' CHANGELOG.md > release_notes.md
         
     - name: Create Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         name: TeslaOnTarget ${{ steps.version.outputs.VERSION }}
         body_path: release_notes.md
