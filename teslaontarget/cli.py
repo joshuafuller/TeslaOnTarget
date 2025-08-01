@@ -12,13 +12,28 @@ from .tesla_api import TeslaCoT
 from .config_handler import Config
 
 # Set up logging
+import os
+
+# Determine log file path - use /logs if available (Docker), otherwise current directory
+log_handlers = [logging.StreamHandler()]  # Always log to stdout
+
+# Try to add file handler
+try:
+    if os.path.exists('/logs') and os.access('/logs', os.W_OK):
+        log_path = '/logs/teslaontarget.log'
+    else:
+        log_path = 'teslaontarget.log'
+    
+    file_handler = logging.FileHandler(log_path)
+    log_handlers.append(file_handler)
+except (IOError, OSError) as e:
+    # If we can't write to file, just use stdout
+    print(f"Warning: Unable to create log file: {e}. Logging to stdout only.")
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('teslaontarget.log'),
-        logging.StreamHandler()
-    ]
+    handlers=log_handlers
 )
 logger = logging.getLogger(__name__)
 

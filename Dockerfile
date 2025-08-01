@@ -3,8 +3,10 @@
 # Build stage
 FROM python:3.13-slim AS builder
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Install build dependencies with cache mount
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     python3-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -12,9 +14,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Set up build directory
 WORKDIR /build
 
-# Copy and install dependencies
+# Copy only requirements first for better layer caching
 COPY requirements.txt .
-RUN pip wheel --no-cache-dir --no-deps --wheel-dir /build/wheels -r requirements.txt
+
+# Build wheels with pip cache mount for faster rebuilds
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip wheel --no-deps --wheel-dir /build/wheels -r requirements.txt
 
 # Runtime stage
 FROM python:3.13-slim
@@ -33,17 +38,19 @@ RUN useradd -m -s /bin/bash -u 1000 teslauser && \
 
 WORKDIR /app
 
-# Copy wheels from builder and install
+# Copy wheels from builder and install with cache mount
 COPY --from=builder /build/wheels /wheels
-RUN pip install --no-cache-dir /wheels/* && rm -rf /wheels
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache /wheels/* && rm -rf /wheels
 
 # Copy application files with correct ownership
 COPY --chown=teslauser:teslauser . .
 
-# Install the package
-RUN pip install --no-cache-dir -e .
+# Install the package with cache mount
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache -e .
 
-# Move entrypoint to root and ensure it's executable
+# Copy and set up entrypoint
 RUN cp /app/docker-entrypoint.sh / && chmod +x /docker-entrypoint.sh
 
 # Switch to non-root user
