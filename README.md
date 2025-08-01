@@ -263,12 +263,35 @@ TeslaOnTarget/
 - Rotate Tesla tokens periodically (automatic via TeslaPy)
 - Monitor `teslaontarget.log` for suspicious activity
 
+## Multi-Vehicle Support
+
+TeslaOnTarget supports tracking multiple vehicles from a single instance. By default, it will track all vehicles on your Tesla account. You can also configure it to track specific vehicles:
+
+```python
+# In config.py - Track all vehicles (default)
+VEHICLE_FILTER = []
+
+# Track specific vehicles by display name
+VEHICLE_FILTER = ["Model Y", "Cybertruck"]
+
+# Track specific vehicles by VIN
+VEHICLE_FILTER = ["5YJ3E1EA8NF000000", "5YJ3E1EA8NF000001"]
+
+# Mix display names and VINs
+VEHICLE_FILTER = ["Model Y", "5YJ3E1EA8NF000001"]
+```
+
+Each vehicle:
+- Gets its own unique identifier in TAK
+- Has separate position caching (last_position_VIN.json)
+- Runs in its own thread for independent tracking
+- Shares a single TAK server connection
+
 ## Known Limitations
 
 - **No SSL/TLS support** - plaintext TCP only (SSL planned for v2.0)
 - Updates only when vehicle is awake or every 10 seconds when asleep (last position)
 - Cannot wake vehicle remotely after initial startup (by design)
-- Single vehicle per instance (run multiple instances for fleets)
 - No authentication to TAK server (depends on network security)
 
 ## 📊 Data Transmitted

@@ -46,6 +46,21 @@ LAST_POSITION_FILE = "/data/last_known_position.json"
 # Debug Settings
 DEBUG_MODE = ${DEBUG_MODE}
 
+# Vehicle Selection (Optional)
+EOF
+    
+    # Handle VEHICLE_FILTER environment variable
+    if [ -n "$VEHICLE_FILTER" ]; then
+        # Convert comma-separated list to Python list
+        # e.g., "Model Y,Cybertruck" -> ["Model Y", "Cybertruck"]
+        PYTHON_LIST=$(echo "$VEHICLE_FILTER" | sed 's/,/", "/g' | sed 's/^/["/' | sed 's/$/"]/')
+        echo "VEHICLE_FILTER = $PYTHON_LIST" >> /app/config.py
+    else
+        echo "VEHICLE_FILTER = []" >> /app/config.py
+    fi
+    
+    cat >> /app/config.py << EOF
+
 # Constants
 MPH_TO_MS = 0.44704
 EOF
@@ -153,6 +168,11 @@ case "$1" in
         echo "  Update Rate: Every ${API_LOOP_DELAY}s"
         echo "  Dead Reckoning: $DEAD_RECKONING_ENABLED"
         echo "  Debug Mode: $DEBUG_MODE"
+        if [ -n "$VEHICLE_FILTER" ]; then
+            echo "  Vehicle Filter: $VEHICLE_FILTER"
+        else
+            echo "  Vehicle Filter: Track all vehicles"
+        fi
         echo
         
         # Start the application

@@ -56,7 +56,8 @@ ENV TESLA_USERNAME="" \
     API_LOOP_DELAY="10" \
     DEAD_RECKONING_ENABLED="True" \
     DEAD_RECKONING_DELAY="1" \
-    DEBUG_MODE="False"
+    DEBUG_MODE="False" \
+    VEHICLE_FILTER=""
 
 # Health check - directly call python to bypass entrypoint
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \

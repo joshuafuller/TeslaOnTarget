@@ -22,17 +22,22 @@ from .cot import generate_cot_packet, format_cot_for_tak
 from .tak_client import TAKClient
 
 class TeslaCoT:
-    def __init__(self):
+    def __init__(self, vehicle_id=None, tak_client=None):
         # Load configuration
         Config.load_from_file()
         self.config = Config
         
+        # Vehicle-specific attributes
+        self.vehicle_id = vehicle_id
+        self.position_file = self._get_position_filename()
         self.last_known_valid_data = self.read_last_position_from_file()
         self.positions_queue = deque(maxlen=2)
         self.vehicle_uids = {}
         self.dead_reckoning_thread = None
         self.stop_dead_reckoning = threading.Event()
-        self.tak_client = TAKClient(self.config.COT_URL)
+        
+        # Use shared TAK client if provided, otherwise create new one
+        self.tak_client = tak_client if tak_client else TAKClient(self.config.COT_URL)
         self.tesla = None
         self.vehicle = None
         
@@ -47,16 +52,25 @@ class TeslaCoT:
         self.capture_count = 0
         if self.debug_mode:
             os.makedirs(self.debug_dir, exist_ok=True)
-            logger.info(f"DEBUG MODE ENABLED! All Tesla API responses will be captured to {self.debug_dir}/")
+            if vehicle_id:
+                logger.info(f"DEBUG MODE ENABLED for vehicle {vehicle_id}! API responses will be captured to {self.debug_dir}/")
         
+    def _get_position_filename(self):
+        """Generate vehicle-specific position filename."""
+        if self.vehicle_id:
+            # Create safe filename from vehicle ID
+            safe_id = "".join(c for c in str(self.vehicle_id) if c.isalnum() or c in '-_')
+            return f"last_position_{safe_id}.json"
+        return self.config.LAST_POSITION_FILE
+    
     def read_last_position_from_file(self):
         """Read the last known position from file."""
-        return load_json_file(self.config.LAST_POSITION_FILE)
+        return load_json_file(self.position_file)
     
     def save_last_position_to_file(self, data):
         """Save the current position to file."""
         try:
-            save_json_file(self.config.LAST_POSITION_FILE, data)
+            save_json_file(self.position_file, data)
         except Exception as e:
             logger.error(f"Error saving position: {e}")
     

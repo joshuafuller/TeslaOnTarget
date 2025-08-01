@@ -25,6 +25,7 @@ services:
       - DEAD_RECKONING_ENABLED=${DEAD_RECKONING_ENABLED:-True}
       - DEAD_RECKONING_DELAY=${DEAD_RECKONING_DELAY:-1}
       - DEBUG_MODE=${DEBUG_MODE:-False}
+      - VEHICLE_FILTER=${VEHICLE_FILTER:-}  # Comma-separated list of vehicles to track
     volumes:
       - tesla_data:/data:rw      # Persistent storage for auth tokens
       - tesla_logs:/logs:rw      # Log files

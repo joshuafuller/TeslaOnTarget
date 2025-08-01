@@ -7,6 +7,15 @@ COT_URL = "tcp://YOUR_TAK_SERVER_IP:8085"  # Replace with your TAK server addres
 # Tesla Account
 TESLA_USERNAME = "your-email@example.com"  # Your Tesla account email
 
+# Vehicle Selection (Optional)
+# Leave empty to track all vehicles on the account
+# Or specify display names or VINs to track specific vehicles
+# Examples:
+# VEHICLE_FILTER = []  # Track all vehicles (default)
+# VEHICLE_FILTER = ["Model Y"]  # Track only vehicle with display name "Model Y"
+# VEHICLE_FILTER = ["5YJ3E1EA8NF000000", "Model 3"]  # Track by VIN or display name
+VEHICLE_FILTER = []
+
 # Timing Configuration
 API_LOOP_DELAY = 10  # Seconds between Tesla API queries (minimum 10 recommended)
 DEAD_RECKONING_ENABLED = True  # Enable dead reckoning when GPS unavailable

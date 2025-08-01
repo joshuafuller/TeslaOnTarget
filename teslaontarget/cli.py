@@ -68,11 +68,34 @@ def main():
             logger.error("No vehicles found on Tesla account")
             sys.exit(1)
             
-        logger.info(f"Found {len(vehicles)} vehicle(s)")
+        logger.info(f"Found {len(vehicles)} vehicle(s) on account")
+        
+        # Filter vehicles if configured
+        vehicle_filter = getattr(Config, 'VEHICLE_FILTER', [])
+        if vehicle_filter:
+            filtered_vehicles = []
+            for vehicle in vehicles:
+                display_name = vehicle.get('display_name', '')
+                vin = vehicle.get('vin', '')
+                if display_name in vehicle_filter or vin in vehicle_filter:
+                    filtered_vehicles.append(vehicle)
+                    logger.info(f"Selected vehicle: {display_name} (VIN: {vin})")
+            
+            if not filtered_vehicles:
+                logger.error(f"No vehicles matched the filter: {vehicle_filter}")
+                sys.exit(1)
+            
+            vehicles = filtered_vehicles
+            logger.info(f"Tracking {len(vehicles)} vehicle(s) based on filter")
+        else:
+            logger.info("No vehicle filter configured - tracking all vehicles")
+        
+        # Create shared TAK client for all vehicles
+        from .tak_client import TAKClient
+        shared_tak_client = TAKClient(Config.COT_URL)
         
         # Create threads for each vehicle
         threads = []
-        tesla_cot = TeslaCoT()
         
         # Wake vehicles if needed
         logger.info("Waking up vehicles...")
@@ -86,11 +109,16 @@ def main():
         
         # Start tracking threads
         for vehicle in vehicles:
-            logger.info(f"Starting tracking for {vehicle['display_name']}")
+            # Create a separate TeslaCoT instance for each vehicle
+            vehicle_id = vehicle.get('vin', vehicle.get('id_s', 'unknown'))
+            tesla_cot = TeslaCoT(vehicle_id=vehicle_id, tak_client=shared_tak_client)
+            
+            logger.info(f"Starting tracking for {vehicle['display_name']} (VIN: {vehicle.get('vin', 'N/A')})")
             thread = threading.Thread(
                 target=tesla_cot.fetch_and_send_data_for_vehicle,
                 args=(vehicle,),
-                daemon=True
+                daemon=True,
+                name=f"Vehicle-{vehicle['display_name']}"
             )
             thread.start()
             threads.append(thread)
