@@ -9,7 +9,7 @@ on:
       - '**'  # Run CI on pull requests to all branches
 
 jobs:
-  lint-and-test:  # This job will handle linting
+  lint:  # This job will handle linting
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,26 +26,3 @@ jobs:
           pip install flake8
           flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
           flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-
-  deploy:  # This job will handle the PyPI deployment
-    needs: lint-and-test  # Make sure linting job passes before deploying
-    if: github.ref == 'refs/heads/main'  # Only deploy if the push is to main
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: 3.9
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install build
-      - name: Build package
-        run: python -m build
-      - name: Publish package
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          user: __token__
-          password: ${{ secrets.PYPI_API_TOKEN }}
