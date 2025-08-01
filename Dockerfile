@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.4
 
 # Build stage
-FROM python:3.11-slim AS builder
+FROM python:3.13-slim AS builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -17,7 +17,7 @@ COPY requirements.txt .
 RUN pip wheel --no-cache-dir --no-deps --wheel-dir /build/wheels -r requirements.txt
 
 # Runtime stage
-FROM python:3.11-slim
+FROM python:3.13-slim
 
 # Add metadata labels
 LABEL org.opencontainers.image.title="TeslaOnTarget" \
