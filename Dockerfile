@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.4
 
 # Build stage
-FROM python:3.13-slim AS builder
+FROM python:3.13.7-slim AS builder
 
 # Install build dependencies with cache mount
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -22,7 +22,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip wheel --no-deps --wheel-dir /build/wheels -r requirements.txt
 
 # Runtime stage
-FROM python:3.13-slim
+FROM python:3.13.7-slim
 
 # Add metadata labels
 LABEL org.opencontainers.image.title="TeslaOnTarget" \
