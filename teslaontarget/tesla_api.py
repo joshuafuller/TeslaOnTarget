@@ -212,7 +212,7 @@ class TeslaCoT:
             if self.tak_client.send_cot(cot_bytes):
                 logger.info(f"Successfully sent CoT packet for {data.get('vehicle_name', 'Unknown')} ({len(cot_bytes)} bytes)")
             else:
-                logger.warning("Failed to send CoT packet")
+                logger.warning("Failed to send CoT packet - background reconnection may be in progress")
         except Exception as e:
             logger.error(f"Error sending CoT packet: {e}", exc_info=True)
     
