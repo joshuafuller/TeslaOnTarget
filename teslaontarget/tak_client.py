@@ -26,6 +26,12 @@ class TAKClient:
         self.reconnect_thread = None
         self.stop_reconnect = threading.Event()
         self.reconnect_interval = 5  # seconds between reconnection attempts
+        # Health / telemetry
+        self.last_connect_ok = None
+        self.last_send_ok = None
+        self.last_send_attempt = None
+        self.last_error = None
+        self.last_error_time = None
         
     def connect(self):
         """Connect to TAK server."""
@@ -37,6 +43,7 @@ class TAKClient:
             self.socket.settimeout(10)
             self.socket.connect((self.host, self.port))
             self.connected = True
+            self.last_connect_ok = time.time()
             logger.info(f"Connected to TAK server at {self.host}:{self.port}")
             # Set TCP_NODELAY to send packets immediately
             self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
@@ -83,15 +90,19 @@ class TAKClient:
                     continue
                     
             try:
+                self.last_send_attempt = time.time()
                 bytes_sent = self.socket.sendall(cot_message)
                 logger.info(f"Sent CoT message to TAK server ({len(cot_message)} bytes)")
                 # Log the entire message for debugging
                 logger.info(f"CoT message sent: {cot_message.decode('utf-8', errors='ignore')}")
+                self.last_send_ok = time.time()
                 return True
                 
             except socket.error as e:
                 logger.error(f"Failed to send CoT message: {e}")
                 self.connected = False
+                self.last_error = str(e)
+                self.last_error_time = time.time()
                 retry_count += 1
                 logger.warning(f"Connection lost, retrying in 30 seconds... (attempt {retry_count})")
                 time.sleep(30)
@@ -142,3 +153,16 @@ class TAKClient:
             self.socket.setblocking(1)
             
         return True
+
+    def health_snapshot(self):
+        """Return a snapshot dict of connection health suitable for JSON export."""
+        return {
+            "host": self.host,
+            "port": self.port,
+            "connected": self.connected,
+            "last_connect_ok": self.last_connect_ok,
+            "last_send_ok": self.last_send_ok,
+            "last_send_attempt": self.last_send_attempt,
+            "last_error": self.last_error,
+            "last_error_time": self.last_error_time,
+        }

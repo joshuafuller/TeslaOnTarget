@@ -63,6 +63,12 @@ EOF
 
 # Constants
 MPH_TO_MS = 0.44704
+
+# Health Monitor (paths must be writable in read-only container)
+HEALTH_FILE = "${HEALTH_FILE:-/logs/health.json}"
+HEALTH_NO_SEND_SECONDS = ${HEALTH_NO_SEND_SECONDS:-0}  # 0 lets app choose default
+HEALTH_CHECK_INTERVAL = ${HEALTH_CHECK_INTERVAL:-0}
+HEALTH_HARD_RESTART_SECONDS = ${HEALTH_HARD_RESTART_SECONDS:-0}
 EOF
     
     echo -e "${GREEN}✓ Configuration created${NC}"
