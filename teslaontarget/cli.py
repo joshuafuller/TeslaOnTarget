@@ -10,6 +10,7 @@ from teslapy import Tesla
 
 from .tesla_api import TeslaCoT
 from .config_handler import Config
+from .health import HealthMonitor
 
 # Set up logging
 import os
@@ -108,6 +109,38 @@ def main():
         # Create shared TAK client for all vehicles
         from .tak_client import TAKClient
         shared_tak_client = TAKClient(Config.COT_URL)
+
+        # Start health monitor watching TAK sends
+        # docker-entrypoint may write HEALTH_* as 0 to indicate "use defaults".
+        # Treat <= 0 as unset and apply sane defaults.
+        configured_no_send = getattr(Config, 'HEALTH_NO_SEND_SECONDS', 0) or 0
+        configured_check = getattr(Config, 'HEALTH_CHECK_INTERVAL', 0) or 0
+        configured_hard = getattr(Config, 'HEALTH_HARD_RESTART_SECONDS', 0) or 0
+        health_file = getattr(Config, 'HEALTH_FILE', 'health.json')
+
+        # Defaults scale with API loop delay
+        default_no_send = max(120, Config.API_LOOP_DELAY * 8)
+        default_check = 15
+
+        max_no_send = configured_no_send if configured_no_send > 0 else default_no_send
+        check_interval = configured_check if configured_check > 0 else default_check
+        hard_restart = configured_hard if configured_hard > 0 else (max_no_send * 5)
+
+        logger.info(
+            "Health thresholds: no-send=%ss, check=%ss, hard-restart=%ss -> file=%s",
+            max_no_send,
+            check_interval,
+            hard_restart,
+            health_file,
+        )
+        health = HealthMonitor(
+            shared_tak_client,
+            health_file=health_file,
+            max_no_send_seconds=max_no_send,
+            check_interval=check_interval,
+            hard_restart_seconds=hard_restart,
+        )
+        health.start()
         
         # Create threads for each vehicle
         threads = []
@@ -156,6 +189,10 @@ def main():
         sys.exit(1)
     finally:
         logger.info("TeslaOnTarget stopped")
+        try:
+            health.stop()
+        except Exception:
+            pass
         
         
 if __name__ == '__main__':
