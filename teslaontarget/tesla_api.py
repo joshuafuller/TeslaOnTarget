@@ -53,7 +53,6 @@ class TeslaCoT:
         # Rate limiting tracking
         self.rate_limit_backoff = 1  # Multiplier for delays
         self.consecutive_errors = 0
-        self.last_rate_limit_time = 0
         self.max_wake_attempts = 3
         # Loop state (promoted from a local so the loop body is testable)
         self.consecutive_no_gps_count = 0
@@ -381,7 +380,6 @@ class TeslaCoT:
         if kind == "rate_limit":
             self.consecutive_errors += 1
             self.rate_limit_backoff = min(self.rate_limit_backoff * 2, 32)
-            self.last_rate_limit_time = time.time()
             delay = self.config.API_LOOP_DELAY * self.rate_limit_backoff
             logger.warning(f"Rate limit detected! Backing off to {delay}s delay (error #{self.consecutive_errors})")
             logger.warning(f"Error details: {exc}")
