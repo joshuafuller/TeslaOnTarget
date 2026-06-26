@@ -181,3 +181,56 @@ class TestExtractRelevantData:
         v = {"vehicle_id": "987", "display_name": "X"}  # no id_s
         d = cot.extract_relevant_data({}, v)
         assert d["UID"] == "TESLA-" + hashlib.md5(b"987").hexdigest()[:8]
+
+
+class TestDeadReckoning:
+    def _drive(self, cot, initial_data, times, max_iters=2):
+        """Run dead_reckoning_update with a controlled clock + bounded loop."""
+        cot.send_to_cot = MagicMock()
+        cot.stop_dead_reckoning = MagicMock()
+        cot.stop_dead_reckoning.is_set.side_effect = [False] * (max_iters - 1) + [True]
+        with patch("teslaontarget.tesla_api.time") as t:
+            t.time.side_effect = times
+            t.sleep = MagicMock()
+            cot.dead_reckoning_update(initial_data)
+        return cot
+
+    def test_stationary_resends_same_position(self, cot):
+        data = {"latitude": 30.0, "longitude": -87.0, "speed": 0}
+        # start=1000, timestamp=1001, break-check=1100 (>=9 -> break)
+        self._drive(cot, data, times=[1000, 1001, 1100])
+        cot.send_to_cot.assert_called_once()
+        sent = cot.send_to_cot.call_args[0][0]
+        assert sent["latitude"] == 30.0 and sent["dead_reckoned"] is True
+
+    def test_speed_none_treated_as_stationary(self, cot):
+        data = {"latitude": 30.0, "longitude": -87.0, "speed": None}
+        self._drive(cot, data, times=[1000, 1001, 1100])
+        cot.send_to_cot.assert_called_once()
+
+    def test_moving_advances_position(self, cot):
+        data = {"latitude": 30.0, "longitude": -87.0, "speed": 60, "heading": 90}
+        self._drive(cot, data, times=[1000, 1001, 1100])
+        sent = cot.send_to_cot.call_args[0][0]
+        # heading 90 (east) -> longitude moves, latitude ~unchanged
+        assert sent["dead_reckoned"] is True
+        assert sent["longitude"] != -87.0
+
+    def test_continues_until_stop_when_under_max_duration(self, cot):
+        data = {"latitude": 30.0, "longitude": -87.0, "speed": 0}
+        # break-check 1002-1000=2 < 9 -> no break -> next is_set True -> exit
+        self._drive(cot, data, times=[1000, 1001, 1002], max_iters=2)
+        cot.send_to_cot.assert_called_once()
+
+    def test_moving_with_none_heading_and_no_break(self, cot):
+        # heading None -> 0; time under max_duration so it loops to the stop event
+        data = {"latitude": 30.0, "longitude": -87.0, "speed": 60, "heading": None}
+        self._drive(cot, data, times=[1000, 1001, 1002], max_iters=2)
+        cot.send_to_cot.assert_called_once()
+
+    def test_zero_coordinate_breaks_immediately(self, cot):
+        # latitude 0 formats fine for the log but is falsy -> "no valid position"
+        data = {"latitude": 0, "longitude": -87.0, "speed": 0}
+        # max_iters=2 so the loop body runs once and hits the else/break
+        self._drive(cot, data, times=[1000, 1001], max_iters=2)
+        cot.send_to_cot.assert_not_called()
