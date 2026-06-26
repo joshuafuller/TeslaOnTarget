@@ -84,7 +84,7 @@ Edit `.env` file:
 ```bash
 git clone https://github.com/joshuafuller/TeslaOnTarget.git
 cd TeslaOnTarget
-pip3 install -r requirements.txt
+uv sync
 ```
 - [ ] Dependencies install successfully
 

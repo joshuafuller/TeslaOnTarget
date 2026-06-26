@@ -109,7 +109,7 @@ See [docs/DOCKER.md](docs/DOCKER.md) for detailed Docker instructions and [docs/
 ```bash
 git clone https://github.com/joshuafuller/TeslaOnTarget.git
 cd TeslaOnTarget
-pip3 install -r requirements.txt
+uv sync   # install uv first: https://docs.astral.sh/uv/getting-started/installation/
 ```
 
 #### 2. Configure
@@ -248,8 +248,8 @@ TeslaOnTarget/
 │   └── auth.py          # Tesla authentication
 ├── teslaontarget.sh     # Single control script (start/stop/status)
 ├── config.py            # Your configuration (don't commit!)
-├── requirements.txt     # Python dependencies
-├── setup.py             # Package installation
+├── pyproject.toml       # Project metadata & dependencies (uv)
+├── uv.lock              # Pinned dependency lockfile
 ├── docs/                # Detailed documentation
 │   ├── README.md        # Full documentation
 │   └── tesla_api_reference.md  # Tesla API details

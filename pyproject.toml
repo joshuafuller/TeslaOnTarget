@@ -1,0 +1,48 @@
+[project]
+name = "teslaontarget"
+version = "1.1.0"
+description = "Bridge Tesla vehicles with TAK servers for real-time position tracking"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Joshua Fuller" }]
+keywords = ["tesla", "tak", "cot", "atak", "tracking"]
+dependencies = [
+    # teslapy 2.9.2+ ships the TLS 1.3 TLSAdapter required since 2026-06-12, when
+    # Tesla's Owner API began rejecting non-TLS-1.3 clients with HTTP 403.
+    "teslapy>=2.9.2",
+    "requests>=2.31.0",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Communications :: Ham Radio",
+]
+
+[project.urls]
+Homepage = "https://github.com/joshuafuller/TeslaOnTarget"
+Repository = "https://github.com/joshuafuller/TeslaOnTarget"
+
+[project.scripts]
+teslaontarget = "teslaontarget.cli:main"
+tesla-auth = "teslaontarget.auth:main"
+
+# PEP 735 dependency group; installed by `uv sync`, excluded by `uv sync --no-dev`.
+[dependency-groups]
+dev = ["pytest>=8.0.0", "flake8>=7.0.0"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["teslaontarget"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

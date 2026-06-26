@@ -57,3 +57,6 @@ teslaontarget_live.log
 *.tmp
 .development_files/
 .archive/
+
+# uv / virtualenv
+.venv/

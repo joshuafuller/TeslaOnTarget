@@ -1,7 +1,7 @@
 """Configuration handling for TeslaOnTarget."""
 
 import os
-import sys
+import importlib.util
 import logging
 
 logger = logging.getLogger(__name__)
@@ -26,19 +26,37 @@ class Config:
             config_path: Path to config.py file
         """
         if config_path is None:
-            # Look for config.py in parent directory
+            # Prefer an explicit path (set by the container) so config loading
+            # never depends on where the package happens to be installed. Only
+            # honor it when the file exists, so a mis-set env var falls back to
+            # the package-adjacent config.py instead of silently using defaults.
+            env_path = os.environ.get('TESLAONTARGET_CONFIG')
+            if env_path:
+                env_path = os.path.expanduser(env_path)
+                if os.path.isfile(env_path):
+                    config_path = env_path
+        if config_path is None:
+            # Fall back to config.py next to the package
             parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             config_path = os.path.join(parent_dir, 'config.py')
-            
-        if not os.path.exists(config_path):
+
+        config_path = os.path.expanduser(config_path)
+        if not os.path.isfile(config_path):
             logger.warning(f"Config file not found at {config_path}, using defaults")
             return
-            
+
         try:
-            # Import config module dynamically
-            sys.path.insert(0, os.path.dirname(config_path))
-            import config
-            
+            # Load the config module directly from its path -- avoids mutating
+            # sys.path and avoids returning a cached `config` module when a
+            # different config_path is requested.
+            spec = importlib.util.spec_from_file_location(
+                "teslaontarget_user_config", config_path)
+            if spec is None or spec.loader is None:
+                logger.error(f"Could not build an import spec for {config_path}")
+                return
+            config = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(config)
+
             # Update class attributes with config values
             for attr in dir(config):
                 if not attr.startswith('_'):
