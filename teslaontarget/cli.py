@@ -117,6 +117,7 @@ def _build_health_monitor(tak_client, config):
     return HealthMonitor(
         tak_client, health_file=health_file, max_no_send_seconds=max_no_send,
         check_interval=check_interval, hard_restart_seconds=hard_restart,
+        alert_url=config.alert_webhook_url,
     )
 
 

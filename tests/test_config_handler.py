@@ -25,6 +25,7 @@ class TestAppConfig:
         assert c.api_loop_delay == 10
         assert c.debug_mode is False
         assert c.vehicle_filter == ()
+        assert c.alert_webhook_url == ""  # alerting off unless supplied
 
     def test_is_immutable(self):
         with pytest.raises(dataclasses.FrozenInstanceError):
@@ -45,12 +46,13 @@ class TestLoadConfig:
         path = _write_config(
             tmp_path,
             'COT_URL = "tcp://x:1"\nTESLA_USERNAME = "a@b.com"\nAPI_LOOP_DELAY = 30\n'
-            'DEBUG_MODE = True\n')
+            'DEBUG_MODE = True\nALERT_WEBHOOK_URL = "https://ntfy.sh/tot"\n')
         c = load_config(path)
         assert c.cot_url == "tcp://x:1"
         assert c.tesla_username == "a@b.com"
         assert c.api_loop_delay == 30
         assert c.debug_mode is True
+        assert c.alert_webhook_url == "https://ntfy.sh/tot"
 
     def test_unknown_keys_ignored(self, tmp_path):
         path = _write_config(tmp_path, 'TESLA_USERNAME = "a@b.com"\nSOMETHING_ELSE = 9\n_PRIV = 1\n')
