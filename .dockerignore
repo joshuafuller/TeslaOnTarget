@@ -91,11 +91,10 @@ docker-compose*.yml
 docker-*.sh
 !docker-entrypoint.sh
 
-# Scripts and tools
+# Scripts and tools (not needed in the runtime image)
 teslaontarget.sh
 scripts/
 tools/
-init-repo.sh
 
 # OS files
 .DS_Store
