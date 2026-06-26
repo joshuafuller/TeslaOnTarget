@@ -5,6 +5,24 @@ All notable changes to TeslaOnTarget will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1](https://github.com/joshuafuller/TeslaOnTarget/compare/v1.2.0...v1.2.1) (2026-06-26)
+
+
+### Bug Fixes
+
+* config.py.template DEBUG_MODE -&gt; False; docs frame 8085 as example not default ([7ab0ed9](https://github.com/joshuafuller/TeslaOnTarget/commit/7ab0ed9e168d37ec4d226160dfd556b2d1b6f0a9))
+
+
+### Documentation
+
+* add architecture guide with Mermaid diagrams; fix Docker/source clarity ([b3cb4b6](https://github.com/joshuafuller/TeslaOnTarget/commit/b3cb4b61970b2fd2b93998ef22360d37bd653044))
+* refresh README for current state ([06473ef](https://github.com/joshuafuller/TeslaOnTarget/commit/06473efef5cc14a4c2dd54f93e4eac8dfdb1a339))
+* refresh README for current state (versions, new modules, alerting) ([c5eb0bb](https://github.com/joshuafuller/TeslaOnTarget/commit/c5eb0bbfb1b1b9410c0d1e2a4ad22e3e7d20b4dd))
+* **review:** accurate COT_URL placeholder + dead-reckoning default ([#40](https://github.com/joshuafuller/TeslaOnTarget/issues/40)) ([55d2dff](https://github.com/joshuafuller/TeslaOnTarget/commit/55d2dff6dea2bc1f3e16e38faeab3b5a703ac6b5))
+* **review:** fix ALERT_WEBHOOK_URL table cell + align structure tree ([#40](https://github.com/joshuafuller/TeslaOnTarget/issues/40)) ([1159f60](https://github.com/joshuafuller/TeslaOnTarget/commit/1159f607d17a415abd8b1d953097bae04d7dc32d))
+* **review:** uv run, configurable port, accurate Docker paths + send_cot wording ([#40](https://github.com/joshuafuller/TeslaOnTarget/issues/40)) ([df5eca7](https://github.com/joshuafuller/TeslaOnTarget/commit/df5eca7c88c691f553179e2a030dc8b9523c37f7))
+* slim README to a front door; move reference detail into docs/ ([ae73bc3](https://github.com/joshuafuller/TeslaOnTarget/commit/ae73bc3dfc434b95b171e669b90d1a5b6ba77174))
+
 ## [1.2.0](https://github.com/joshuafuller/TeslaOnTarget/compare/v1.1.0...v1.2.0) (2026-06-26)
 
 
