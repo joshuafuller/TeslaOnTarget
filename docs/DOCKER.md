@@ -212,7 +212,7 @@ docker buildx build --platform linux/amd64,linux/arm64 -t teslaontarget:latest .
 1. **Local Network Only**: v1.0 uses plaintext TCP - run on same network as TAK server
 2. **Use Secrets**: For production, use Docker secrets instead of environment variables
 3. **Network Isolation**: Put TAK server and TeslaOnTarget on same Docker network
-4. **Read-only Root**: Add `read_only: true` to docker-compose.yml
+4. **Read-only Root**: Not currently supported — the entrypoint generates `/app/config.py` and creates cache symlinks under `/app` at startup, so the root filesystem must be writable (`read_only: false`). Hardened read-only mode (config written to a tmpfs path, teslapy's `cache_file` pointed at `/data`) is planned; until then do **not** set `read_only: true` or the container will crash-loop on startup.
 5. **Non-root User**: Container runs as non-root user by default
 6. **No WAN Exposure**: Do not expose TAK ports across Internet without VPN
 
