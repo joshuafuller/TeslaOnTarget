@@ -22,11 +22,14 @@ def _https_min_tls(tesla):
     both shapes so the test tracks intent, not implementation detail.
     """
     adapter = tesla.get_adapter("https://owner-api.teslamotors.com/")
-    kw = adapter.poolmanager.connection_pool_kw
+    # Stay defensive about teslapy's adapter internals: if the structure changes,
+    # return None so the assertion fails with its intended message rather than a
+    # bare AttributeError/KeyError.
+    pool_manager = getattr(adapter, "poolmanager", None)
+    kw = getattr(pool_manager, "connection_pool_kw", None) or {}
     if kw.get("ssl_minimum_version") is not None:
         return kw["ssl_minimum_version"]
-    ctx = kw.get("ssl_context")
-    return ctx.minimum_version if ctx is not None else None
+    return getattr(kw.get("ssl_context"), "minimum_version", None)
 
 
 def test_teslapy_ships_tls_adapter():
