@@ -99,8 +99,8 @@ MUTATIONS = [
      "tests/test_tesla_api.py", "tesla: unavailable classify or -> and"),
     # ---- vehicle_mapper.py ----
     ("teslaontarget/vehicle_mapper.py",
-     'return f"TESLA-{hashlib.md5(str(vehicle_id).encode()).hexdigest()[:8]}"',
-     'return f"TESLA-{hashlib.md5(str(vehicle_id).encode()).hexdigest()[:7]}"',
+     'return f"TESLA-{hashlib.md5(str(vehicle_id).encode(), usedforsecurity=False).hexdigest()[:8]}"',
+     'return f"TESLA-{hashlib.md5(str(vehicle_id).encode(), usedforsecurity=False).hexdigest()[:7]}"',
      "tests/test_vehicle_mapper.py", "mapper: UID md5 slice [:8] -> [:7]"),
     ("teslaontarget/vehicle_mapper.py", 'variant = "Performance"', 'variant = "Sport"',
      "tests/test_vehicle_mapper.py", "mapper: Performance variant label"),
