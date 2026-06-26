@@ -167,7 +167,7 @@ View live logs:
 | `DEBUG_MODE` | Save all Tesla API responses for analysis | `False` |
 | `DEAD_RECKONING_ENABLED` | Interpolate position between API updates for smooth tracking | `True` |
 | `DEAD_RECKONING_DELAY` | Seconds between interpolated position updates (1 = 1Hz) | `1` |
-| `ALERT_WEBHOOK_URL` | Optional ntfy topic / webhook for failure alerts (empty = disabled) | `` (off) |
+| `ALERT_WEBHOOK_URL` | Optional ntfy topic / webhook for failure alerts (empty = disabled) | _(empty)_ |
 | `HEALTH_NO_SEND_SECONDS` | Stall threshold before forcing a reconnect (0 = auto) | `0` |
 | `HEALTH_HARD_RESTART_SECONDS` | No-send threshold before exiting for a supervisor restart (0 = auto) | `0` |
 
@@ -248,18 +248,18 @@ python3 -m teslaontarget.auth
 ```
 TeslaOnTarget/
 ├── teslaontarget/        # Main package directory
-│   ├── __init__.py      # Package initialization
-│   ├── __main__.py      # Entry point
-│   ├── cli.py           # CLI / startup, per-vehicle tracking threads
-│   ├── tesla_api.py     # Tesla API integration + dead reckoning
+│   ├── __init__.py       # Package initialization
+│   ├── __main__.py       # Entry point
+│   ├── cli.py            # CLI / startup, per-vehicle tracking threads
+│   ├── tesla_api.py      # Tesla API integration + dead reckoning
 │   ├── vehicle_mapper.py # Tesla payload -> CoT data mapping (pure)
-│   ├── cot.py           # CoT message generation
+│   ├── cot.py            # CoT message generation
 │   ├── config_handler.py # Immutable AppConfig + loader
-│   ├── tak_client.py    # TAK server connection
-│   ├── health.py        # Health monitor + failure alerting
-│   ├── constants.py     # Shared physical constants
-│   ├── utils.py         # Helper functions
-│   └── auth.py          # Tesla authentication
+│   ├── tak_client.py     # TAK server connection
+│   ├── health.py         # Health monitor + failure alerting
+│   ├── constants.py      # Shared physical constants
+│   ├── utils.py          # Helper functions
+│   └── auth.py           # Tesla authentication
 ├── teslaontarget.sh     # Single control script (start/stop/status)
 ├── config.py            # Your configuration (don't commit!)
 ├── pyproject.toml       # Project metadata & dependencies (uv)
