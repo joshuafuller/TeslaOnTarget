@@ -9,7 +9,10 @@ services:
     container_name: teslaontarget
     restart: unless-stopped
     user: teslauser
-    read_only: true
+    # NOTE: the entrypoint writes config.py and cache symlinks into /app, so the
+    # root filesystem must be writable. Hardened read-only mode (config -> tmpfs,
+    # teslapy cache_file -> /data) is tracked for the uv modernization PR.
+    read_only: false
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -59,7 +62,10 @@ services:
     stdin_open: true
     tty: true
     user: teslauser
-    read_only: true
+    # NOTE: the entrypoint writes config.py and cache symlinks into /app, so the
+    # root filesystem must be writable. Hardened read-only mode (config -> tmpfs,
+    # teslapy cache_file -> /data) is tracked for the uv modernization PR.
+    read_only: false
     security_opt:
       - no-new-privileges:true
     cap_drop:
