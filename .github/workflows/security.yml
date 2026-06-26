@@ -6,6 +6,11 @@ name: security
 #
 # Trivy is run from its official image (pinned) rather than trivy-action, whose
 # binary-installer step is unreliable on hosted runners.
+#
+# Vuln scans use --ignore-unfixed: report only CVEs that have a fix available.
+# Base-image OS packages accrue dozens of CVEs with no upstream patch yet
+# (nothing we can do), which otherwise flood the Security tab. They resurface
+# automatically once a fix is published -- i.e. when they become actionable.
 on:
   push:
     branches: [main]
@@ -40,7 +45,7 @@ jobs:
       - name: Trivy dependency scan
         run: |
           docker run --rm -v "$PWD:/repo" "$TRIVY_IMAGE" \
-            fs --scanners vuln --format sarif --output /repo/trivy-deps.sarif \
+            fs --scanners vuln --ignore-unfixed --format sarif --output /repo/trivy-deps.sarif \
             --exit-code 0 --no-progress /repo
       - name: Upload results to Security tab
         # Forked-PR tokens lack security-events:write, so only upload for pushes,
@@ -78,7 +83,7 @@ jobs:
       - name: Trivy image scan
         run: |
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/out" "$TRIVY_IMAGE" \
-            image --format sarif --output /out/trivy-image.sarif \
+            image --ignore-unfixed --format sarif --output /out/trivy-image.sarif \
             --exit-code 0 --no-progress teslaontarget:scan
       - name: Upload results to Security tab
         if: ${{ always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
