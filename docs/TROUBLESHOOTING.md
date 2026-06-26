@@ -10,9 +10,17 @@
 
 ## Authentication issues
 
+**Source install** — clear the cached token and re-authenticate:
+
 ```bash
 rm cache.json
 python3 -m teslaontarget.auth
+```
+
+**Docker** — the token lives in the `tesla_data` volume; re-run the auth container:
+
+```bash
+docker run -it --env-file .env -v tesla_data:/data ghcr.io/joshuafuller/teslaontarget auth
 ```
 
 See [AUTHENTICATION.md](AUTHENTICATION.md) for the full login walkthrough.

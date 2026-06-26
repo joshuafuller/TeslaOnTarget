@@ -13,6 +13,29 @@ Bridge your Tesla vehicle with TAK (Team Awareness Kit) servers for real-time po
 
 TeslaOnTarget connects your Tesla to a TAK server and streams live position and status as Cursor-on-Target (CoT) messages — for emergency response, fleet or personal tracking, or testing TAK systems with real vehicle data.
 
+## How it works
+
+```mermaid
+flowchart LR
+    tesla["Tesla Owner API"]
+    subgraph app["TeslaOnTarget container"]
+        cli["cli<br/>per-vehicle threads"]
+        api["tesla_api<br/>poll + dead reckoning"]
+        mapper["vehicle_mapper<br/>payload to CoT dict"]
+        cot["cot<br/>build CoT XML"]
+        takc["tak_client<br/>TCP send"]
+        health["health<br/>monitor + alerts"]
+        cli --> api --> mapper --> cot --> takc
+        health -.->|watches| takc
+    end
+    tesla -->|vehicle data every 10s| cli
+    takc -->|CoT over TCP| takserver["TAK Server"]
+    takserver --> clients["ATAK / iTAK / WebTAK"]
+    health -.->|webhook/ntfy on stall| alert["Alert endpoint"]
+```
+
+Poll Tesla → map the payload to a CoT event → send it to your TAK server, with 1 Hz dead-reckoning between polls and a health monitor that reconnects (and alerts) on failure. Full detail: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
+
 ## Features
 
 - **Real-time tracking** — GPS updates every 10s with 1Hz dead-reckoning in between
@@ -37,7 +60,7 @@ docker run -d --env-file .env -v tesla_data:/data -v tesla_logs:/logs \
   --name teslaontarget --restart unless-stopped ghcr.io/joshuafuller/teslaontarget
 ```
 
-Prefer a non-Docker install? `uv sync`, then `cp config.py.template config.py` and `python -m teslaontarget.auth`. Full guides below.
+Prefer a non-Docker install? `uv sync`, copy `config.py.template` → `config.py`, run `python -m teslaontarget.auth`, then `./teslaontarget.sh start`. Full guides below.
 
 ## Requirements
 
@@ -55,7 +78,8 @@ Set via environment variables (Docker) or `config.py` (source). The essentials:
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| `TAK_SERVER` / `COT_URL` | TAK server host (or full `tcp://host:port`) | required |
+| `TAK_SERVER` (+ `TAK_PORT`) | TAK server host/IP and port — **Docker** | required |
+| `COT_URL` | Full `tcp://host:port` — **source** `config.py` | required |
 | `TESLA_USERNAME` | Tesla account email | required |
 | `ALERT_WEBHOOK_URL` | ntfy topic / webhook for failure alerts | _(off)_ |
 
@@ -64,7 +88,7 @@ Full reference (all options, multi-vehicle filtering, debug capture, what's tran
 ## Documentation
 
 - **[Documentation index](docs/README.md)** — start here
-- [Docker guide](docs/DOCKER.md) · [Tesla authentication](docs/AUTHENTICATION.md) · [Configuration & operations](docs/CONFIGURATION.md) · [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [Architecture](docs/ARCHITECTURE.md) · [Docker guide](docs/DOCKER.md) · [Tesla authentication](docs/AUTHENTICATION.md) · [Configuration & operations](docs/CONFIGURATION.md) · [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [CHANGELOG](CHANGELOG.md) · [Releases](https://github.com/joshuafuller/TeslaOnTarget/releases) · [Roadmap](docs/ROADMAP.md) · [Contributing](CONTRIBUTING.md)
 
 ## Known limitations

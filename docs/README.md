@@ -4,6 +4,7 @@
 
 ### Getting Started
 - [Main README](../README.md) - Project overview and quick start
+- [ARCHITECTURE.md](ARCHITECTURE.md) - How it works: modules, runtime flow, diagrams
 - [AUTHENTICATION.md](AUTHENTICATION.md) - Tesla authentication guide
 - [DOCKER.md](DOCKER.md) - Complete Docker guide
 - [DOCKER_QUICKSTART.md](DOCKER_QUICKSTART.md) - Docker quick reference
