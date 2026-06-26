@@ -69,6 +69,24 @@ def _load_config_module(config_path: str):
     return module
 
 
+def _coerce_vehicle_filter(value) -> Tuple[str, ...]:
+    """Normalize a configured VEHICLE_FILTER to a tuple of names.
+
+    A bare string is treated as a single name (not split into characters); a
+    non-iterable is ignored (empty filter) so one bad value can't discard the
+    rest of an otherwise-valid config.
+    """
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        return (value,)
+    try:
+        return tuple(value)
+    except TypeError:
+        logger.warning("VEHICLE_FILTER is not a list or string; ignoring it")
+        return ()
+
+
 def load_config(config_path: Optional[str] = None) -> AppConfig:
     """Load configuration into an immutable :class:`AppConfig` (defaults if absent)."""
     config_path = _resolve_config_path(config_path)
@@ -84,8 +102,8 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
             key = field.name.upper()
             if hasattr(module, key):
                 value = getattr(module, key)
-                if field.name == "vehicle_filter" and value is not None:
-                    value = tuple(value)
+                if field.name == "vehicle_filter":
+                    value = _coerce_vehicle_filter(value)
                 overrides[field.name] = value
         logger.info(f"Configuration loaded from {config_path}")
         return replace(AppConfig(), **overrides)

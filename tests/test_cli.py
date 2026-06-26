@@ -18,7 +18,7 @@ def _vmock(state):
     data = {"state": state, "display_name": "Car"}
     m = MagicMock()
     m.get.side_effect = data.get
-    m.__getitem__ = lambda s, k: data[k]
+    m.__getitem__.side_effect = data.__getitem__
     return m
 
 

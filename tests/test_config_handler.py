@@ -62,6 +62,22 @@ class TestLoadConfig:
         path = _write_config(tmp_path, 'VEHICLE_FILTER = ["Tron", "Other"]\n')
         assert load_config(path).vehicle_filter == ("Tron", "Other")
 
+    def test_vehicle_filter_none_is_empty(self, tmp_path):
+        path = _write_config(tmp_path, 'VEHICLE_FILTER = None\n')
+        assert load_config(path).vehicle_filter == ()
+
+    def test_vehicle_filter_string_is_single_name(self, tmp_path):
+        # A bare string must not be split into characters.
+        path = _write_config(tmp_path, 'VEHICLE_FILTER = "Tron"\n')
+        assert load_config(path).vehicle_filter == ("Tron",)
+
+    def test_vehicle_filter_non_iterable_ignored_keeps_other_fields(self, tmp_path):
+        # A bad VEHICLE_FILTER must not discard the rest of a valid config.
+        path = _write_config(tmp_path, 'VEHICLE_FILTER = 5\nCOT_URL = "tcp://keep:1"\n')
+        c = load_config(path)
+        assert c.vehicle_filter == ()
+        assert c.cot_url == "tcp://keep:1"
+
     def test_env_var_path(self, tmp_path, monkeypatch):
         path = _write_config(tmp_path, 'TESLA_USERNAME = "env@b.com"\n')
         monkeypatch.setenv("TESLAONTARGET_CONFIG", path)
