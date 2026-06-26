@@ -1,2 +1,5 @@
-teslapy>=2.8.0
+# teslapy 2.9.2+ adds the TLS 1.3 TLSAdapter required since 2026-06-12, when
+# Tesla's Owner API began rejecting non-TLS-1.3 clients with HTTP 403
+# ("forbidden, see .../fleet-api"). Older teslapy (<=2.9.0) is permanently broken.
+teslapy>=2.9.2
 requests>=2.31.0
