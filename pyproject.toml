@@ -35,7 +35,7 @@ tesla-auth = "teslaontarget.auth:main"
 
 # PEP 735 dependency group; installed by `uv sync`, excluded by `uv sync --no-dev`.
 [dependency-groups]
-dev = ["pytest>=8.0.0"]
+dev = ["pytest>=8.0.0", "flake8>=7.0.0"]
 
 [build-system]
 requires = ["hatchling"]

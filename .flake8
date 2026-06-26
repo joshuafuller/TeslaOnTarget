@@ -1,0 +1,4 @@
+[flake8]
+# Don't lint the uv-managed virtualenv or build artifacts (third-party code).
+extend-exclude = .venv,build,dist,*.egg-info
+max-line-length = 127

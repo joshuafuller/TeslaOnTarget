@@ -1,7 +1,7 @@
 """Configuration handling for TeslaOnTarget."""
 
 import os
-import sys
+import importlib.util
 import logging
 
 logger = logging.getLogger(__name__)
@@ -43,10 +43,14 @@ class Config:
             return
             
         try:
-            # Import config module dynamically
-            sys.path.insert(0, os.path.dirname(config_path))
-            import config
-            
+            # Load the config module directly from its path -- avoids mutating
+            # sys.path and avoids returning a cached `config` module when a
+            # different config_path is requested.
+            spec = importlib.util.spec_from_file_location(
+                "teslaontarget_user_config", config_path)
+            config = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(config)
+
             # Update class attributes with config values
             for attr in dir(config):
                 if not attr.startswith('_'):
