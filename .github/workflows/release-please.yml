@@ -2,8 +2,8 @@ name: release-please
 
 # Automates versioning + CHANGELOG from Conventional Commits. On each push to
 # main it maintains a "release PR"; merging that PR bumps the version, updates
-# CHANGELOG.md, and tags vX.Y.Z (which docker-publish turns into a versioned
-# GHCR image). Cut a release simply by merging the release PR when you're ready.
+# CHANGELOG.md, tags vX.Y.Z, creates the GitHub Release, and publishes the
+# versioned GHCR image. Cut a release by merging the release PR when ready.
 on:
   push:
     branches: [main]
@@ -15,9 +15,53 @@ permissions:
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
       - uses: googleapis/release-please-action@v4
+        id: release
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+  # Publish the versioned GHCR image when a release is cut. Done here (not via
+  # docker-publish's v* trigger) because the tag is created with GITHUB_TOKEN,
+  # which by design does not trigger other workflows -- so this gives external
+  # users a pullable :X.Y.Z image per release without needing a PAT.
+  publish-image:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v6
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ needs.release-please.outputs.tag_name }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.release-please.outputs.tag_name }}
+            type=semver,pattern={{major}},value=${{ needs.release-please.outputs.tag_name }}
+            type=raw,value=latest
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
