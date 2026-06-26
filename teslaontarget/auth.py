@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Tesla authentication script to get a fresh token"""
 
-import sys
 import webbrowser
 from teslapy import Tesla
 from .config_handler import Config

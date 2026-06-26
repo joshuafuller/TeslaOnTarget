@@ -1,25 +1,20 @@
-import json
-from collections import deque
-import time
-import socket
-import xml.etree.ElementTree as ET
-from urllib.parse import urlparse
 import hashlib
-import threading
-from math import radians, cos, sin
+import json
 import logging
-import re
 import os
+import threading
+import time
+from collections import deque
 from datetime import datetime
+from math import cos, degrees, radians, sin
 
-# Set up logging
-logger = logging.getLogger(__name__)
-
-# Import from new package structure
 from .config_handler import Config
-from .utils import calculate_distance, save_json_file, load_json_file
-from .cot import generate_cot_packet, format_cot_for_tak
+from .constants import EARTH_RADIUS_M, MPH_TO_MS
+from .cot import format_cot_for_tak, generate_cot_packet
 from .tak_client import TAKClient
+from .utils import load_json_file, save_json_file
+
+logger = logging.getLogger(__name__)
 
 # Tesla get_vehicle_data endpoint sets
 _INIT_ENDPOINTS = ('location_data;drive_state;charge_state;vehicle_state;'
@@ -58,7 +53,8 @@ class TeslaCoT:
         self.consecutive_no_gps_count = 0
         
         # Debug mode - captures all Tesla API responses
-        self.debug_mode = getattr(self.config, 'DEBUG_MODE', True)  # Default to True for now
+        # Opt-in: debug capture writes every API response to disk, so default off.
+        self.debug_mode = getattr(self.config, 'DEBUG_MODE', False)
         self.debug_dir = "tesla_api_captures"
         self.capture_count = 0
         if self.debug_mode:
@@ -269,7 +265,7 @@ class TeslaCoT:
                     continue
                     
                 # Tesla API returns speed in mph
-                speed_ms = speed * self.config.MPH_TO_MS
+                speed_ms = speed * MPH_TO_MS
                 heading = initial_data.get('heading', 0)
                 if heading is None:
                     heading = 0
@@ -281,19 +277,14 @@ class TeslaCoT:
                 # Calculate new position from current position
                 lat_rad = radians(current_lat)
                 lon_rad = radians(current_lon)
-                
-                # Earth radius in meters
-                R = 6371000
-                
-                # Calculate new latitude
-                new_lat_rad = lat_rad + (distance / R) * cos(heading_rad)
-                
-                # Calculate new longitude
-                new_lon_rad = lon_rad + (distance / (R * cos(lat_rad))) * sin(heading_rad)
-                
+
+                # Calculate new latitude/longitude (equirectangular step)
+                new_lat_rad = lat_rad + (distance / EARTH_RADIUS_M) * cos(heading_rad)
+                new_lon_rad = lon_rad + (distance / (EARTH_RADIUS_M * cos(lat_rad))) * sin(heading_rad)
+
                 # Convert back to degrees
-                current_lat = new_lat_rad * 180 / 3.14159265359
-                current_lon = new_lon_rad * 180 / 3.14159265359
+                current_lat = degrees(new_lat_rad)
+                current_lon = degrees(new_lon_rad)
                 
                 # Create updated data packet
                 updated_data = initial_data.copy()

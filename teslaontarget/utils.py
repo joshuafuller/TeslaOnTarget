@@ -2,7 +2,9 @@
 
 import json
 import logging
-from math import radians, sin, cos, sqrt, atan2
+from math import atan2, cos, radians, sin, sqrt
+
+from .constants import EARTH_RADIUS_M, METERS_TO_FEET, MPH_TO_MS
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +19,7 @@ def calculate_distance(lat1, lon1, lat2, lon2):
     Returns:
         float: Distance in meters
     """
-    R = 6371e3  # Earth radius in meters
+    R = EARTH_RADIUS_M
     phi1 = radians(lat1)
     phi2 = radians(lat2)
     delta_phi = radians(lat2 - lat1)
@@ -76,7 +78,7 @@ def meters_to_feet(meters):
     Returns:
         float: Distance in feet
     """
-    return meters * 3.28084
+    return meters * METERS_TO_FEET
 
 
 def mph_to_ms(mph):
@@ -88,7 +90,7 @@ def mph_to_ms(mph):
     Returns:
         float: Speed in meters per second
     """
-    return mph * 0.44704 if mph else 0
+    return mph * MPH_TO_MS if mph else 0
 
 
 def celsius_to_fahrenheit(celsius):

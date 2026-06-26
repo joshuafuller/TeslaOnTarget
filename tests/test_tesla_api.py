@@ -16,7 +16,6 @@ def cot(tmp_path, monkeypatch):
     monkeypatch.setattr(Config, "LAST_POSITION_FILE", "last.json", raising=False)
     monkeypatch.setattr(Config, "API_LOOP_DELAY", 10, raising=False)
     monkeypatch.setattr(Config, "DEAD_RECKONING_DELAY", 1, raising=False)
-    monkeypatch.setattr(Config, "MPH_TO_MS", 0.44704, raising=False)
     return TeslaCoT(vehicle_id="VIN123", tak_client=MagicMock())
 
 
