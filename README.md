@@ -1,373 +1,106 @@
-
 # TeslaOnTarget
 
 Bridge your Tesla vehicle with TAK (Team Awareness Kit) servers for real-time position tracking.
 
-![Python](https://img.shields.io/badge/python-3.7+-blue.svg)
+![Python](https://img.shields.io/badge/python-3.11+-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![TAK](https://img.shields.io/badge/TAK-Compatible-orange.svg)
-![Tesla](https://img.shields.io/badge/Tesla-API-red.svg)
-![Docker](https://github.com/joshuafuller/TeslaOnTarget/actions/workflows/docker-publish.yml/badge.svg)
-![GitHub Container Registry](https://img.shields.io/badge/ghcr.io-ready-brightgreen)
+[![CI](https://github.com/joshuafuller/TeslaOnTarget/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/joshuafuller/TeslaOnTarget/actions/workflows/ci-cd.yml)
+[![Security](https://github.com/joshuafuller/TeslaOnTarget/actions/workflows/security.yml/badge.svg)](https://github.com/joshuafuller/TeslaOnTarget/actions/workflows/security.yml)
+[![Release](https://img.shields.io/github/v/release/joshuafuller/TeslaOnTarget)](https://github.com/joshuafuller/TeslaOnTarget/releases)
+![GHCR](https://img.shields.io/badge/ghcr.io-ready-brightgreen)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/joshuafuller/TeslaOnTarget)
 
-## What is TeslaOnTarget?
+TeslaOnTarget connects your Tesla to a TAK server and streams live position and status as Cursor-on-Target (CoT) messages — for emergency response, fleet or personal tracking, or testing TAK systems with real vehicle data.
 
-TeslaOnTarget is a lightweight Python application that connects your Tesla vehicle to a TAK (Team Awareness Kit) server, enabling real-time vehicle tracking in tactical awareness applications. It bridges the gap between Tesla's modern API and military/emergency response systems that use Cursor on Target (CoT) messaging.
+## How it works
 
-### Use Cases
-- **Emergency Response** - Track response vehicles in real-time
-- **Fleet Management** - Monitor multiple Tesla vehicles on a single TAK display
-- **Personal Tracking** - Keep tabs on your vehicle's location and status
-- **Integration Testing** - Test TAK systems with real vehicle data
+```mermaid
+flowchart LR
+    tesla["Tesla Owner API"]
+    subgraph app["TeslaOnTarget container"]
+        cli["cli<br/>per-vehicle threads"]
+        api["tesla_api<br/>poll + dead reckoning"]
+        mapper["vehicle_mapper<br/>payload to CoT dict"]
+        cot["cot<br/>build CoT XML"]
+        takc["tak_client<br/>TCP send"]
+        health["health<br/>monitor + alerts"]
+        cli --> api --> mapper --> cot --> takc
+        health -.->|watches| takc
+    end
+    tesla -->|vehicle data every 10s| cli
+    takc -->|CoT over TCP| takserver["TAK Server"]
+    takserver --> clients["ATAK / iTAK / WebTAK"]
+    health -.->|webhook/ntfy on stall| alert["Alert endpoint"]
+```
+
+Poll Tesla → map the payload to a CoT event → send it to your TAK server, with 1 Hz dead-reckoning between polls and a health monitor that reconnects (and alerts) on failure. Full detail: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
 
 ## Features
 
-- **Real-time Vehicle Tracking** - GPS position updates every 10 seconds
-- **Battery & Charging Status** - Monitor charge level and time to completion
-- **Smart Wake Management** - Wakes vehicle only once, preserves battery when parked
-- **Multi-TAK Compatible** - Tested with iTAK, ATAK, and WebTAK
-- **Security Alerts** - Warnings for open windows/doors when parked
-- **Dead Reckoning** - Smooth 1Hz position updates between 10-second API polls
-- **Resilient Connection** - Automatic reconnection and error recovery
-- **Detailed Logging** - Comprehensive logs for troubleshooting
-- **Secure Token Storage** - OAuth2 token management via TeslaPy
-- **Location Caching** - Continues reporting last position when vehicle sleeps
+- **Real-time tracking** — GPS updates every 10s with 1Hz dead-reckoning in between
+- **Rich status** — battery, charging, and parked-security (doors/windows/sentry) in the CoT remarks
+- **Multi-vehicle** — track your whole account from one instance (iTAK / ATAK / WebTAK)
+- **Self-healing** — health monitor reconnects on stalled sends and restarts for recovery
+- **Failure alerting** — optional webhook/ntfy push when sends stall (opt-in)
+- **Battery-friendly** — wakes the vehicle once, reports last position while it sleeps
+
+## Quick start (Docker)
+
+```bash
+docker pull ghcr.io/joshuafuller/teslaontarget:latest   # or :1.2.0 to pin a release
+
+cp .env.example .env          # set TAK_SERVER and TESLA_USERNAME
+
+# one-time Tesla login
+docker run -it --env-file .env -v tesla_data:/data ghcr.io/joshuafuller/teslaontarget auth
+
+# start tracking
+docker run -d --env-file .env -v tesla_data:/data -v tesla_logs:/logs \
+  --name teslaontarget --restart unless-stopped ghcr.io/joshuafuller/teslaontarget
+```
+
+Prefer a non-Docker install? `uv sync`, copy `config.py.template` → `config.py`, run `uv run python -m teslaontarget.auth`, then `./teslaontarget.sh start`. Full guides below.
 
 ## Requirements
 
-- **Python 3.7+** 
-- **Tesla Account** with a vehicle
-- **TAK Server** (one of the following):
-  - [OpenTAKServer](https://github.com/brian7704/OpenTAKServer)
-  - TAK Server (Official)
-  - Any CoT-compatible server
-- **Network Access** to both internet (Tesla API) and your TAK server
+- **Python 3.11+** (bundled in the Docker image)
+- A **Tesla account** with a vehicle
+- A **CoT-capable TAK server** reachable over plaintext TCP
 
-### ⚠️ Important Security Note
-**This version only supports plaintext TCP connections to TAK servers.** SSL/TLS/QUIC support is planned for a future release. For security:
-- Run TeslaOnTarget on the same network as your TAK server
-- Ideally run it directly on the TAK server machine
-- Do NOT expose across WAN/Internet connections
-- Use VPN if remote access is required
+## ⚠️ Security
 
-## Quick Start
+Only **plaintext TCP** to the TAK server is supported (no TLS yet). Keep TeslaOnTarget on the same LAN as your TAK server (ideally on the TAK host) or behind a VPN — do not expose it across the internet.
 
-### Option 1: Docker (Recommended)
+## Configuration
 
-#### Using Pre-built Image (Easiest)
-```bash
-# Pull the latest image
-docker pull ghcr.io/joshuafuller/teslaontarget:latest
-
-# Create configuration
-wget https://raw.githubusercontent.com/joshuafuller/TeslaOnTarget/main/.env.example
-cp .env.example .env
-# Edit .env with your TAK server IP and Tesla email
-
-# Authenticate with Tesla
-docker run -it --env-file .env -v tesla_data:/data ghcr.io/joshuafuller/teslaontarget auth
-
-# Or minimal auth command (TAK_SERVER not required for auth):
-# docker run -it -e TESLA_USERNAME=your@email.com -v tesla_data:/data ghcr.io/joshuafuller/teslaontarget auth
-
-# Run TeslaOnTarget
-docker run -d --env-file .env -v tesla_data:/data -v tesla_logs:/logs \
-  --name teslaontarget --restart unless-stopped \
-  ghcr.io/joshuafuller/teslaontarget
-```
-
-#### Building from Source
-```bash
-# Clone repository
-git clone https://github.com/joshuafuller/TeslaOnTarget.git
-cd TeslaOnTarget
-
-# Setup configuration
-cp .env.example .env
-# Edit .env with your TAK server IP and Tesla email
-
-# Build Docker image
-./docker-run.sh build
-
-# Authenticate with Tesla (one-time)
-./docker-run.sh auth
-
-# Start tracking
-./docker-run.sh start
-
-# View logs
-./docker-run.sh logs
-```
-
-See [docs/DOCKER.md](docs/DOCKER.md) for detailed Docker instructions and [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md) for Tesla login help.
-
-### Option 2: Traditional Installation
-
-#### 1. Clone & Install
-
-```bash
-git clone https://github.com/joshuafuller/TeslaOnTarget.git
-cd TeslaOnTarget
-uv sync   # install uv first: https://docs.astral.sh/uv/getting-started/installation/
-```
-
-#### 2. Configure
-
-Copy the template and edit with your settings:
-```bash
-cp config.py.template config.py
-nano config.py
-```
-
-Required settings:
-```python
-COT_URL = "tcp://192.168.1.100:8085"  # Your TAK server
-TESLA_USERNAME = "your@email.com"      # Your Tesla account email
-```
-
-#### 3. Authenticate with Tesla
-
-```bash
-python3 -m teslaontarget.auth
-```
-
-This will:
-1. Open Tesla's login page in your browser
-2. After login, you'll land on a "Page Not Found" error (this is normal!)
-3. Copy the ENTIRE URL from your browser's address bar
-4. Paste it back in the terminal when prompted
-
-#### 4. Start Tracking
-
-```bash
-./teslaontarget.sh start
-```
-
-View live logs:
-```bash
-./teslaontarget.sh logs
-```
-
-## Configuration Options
+Set via environment variables (Docker) or `config.py` (source). The essentials:
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| `COT_URL` | TAK server URL (tcp://host:port) | `tcp://YOUR_TAK_SERVER:8085` |
-| `API_LOOP_DELAY` | Seconds between Tesla API calls | `10` |
-| `TESLA_USERNAME` | Your Tesla account email | Required |
-| `LAST_POSITION_FILE` | Cache file for position data | `last_known_position.json` |
-| `DEBUG_MODE` | Save all Tesla API responses for analysis | `False` |
-| `DEAD_RECKONING_ENABLED` | Interpolate position between API updates for smooth tracking | `True` |
-| `DEAD_RECKONING_DELAY` | Seconds between interpolated position updates (1 = 1Hz) | `1` |
+| `TAK_SERVER` (+ `TAK_PORT`) | TAK server host/IP and port — **Docker** | required |
+| `COT_URL` | Full `tcp://host:port` — **source** `config.py` | required |
+| `TESLA_USERNAME` | Tesla account email | required |
+| `ALERT_WEBHOOK_URL` | ntfy topic / webhook for failure alerts | _(off)_ |
 
-## 📡 TAK Server Setup
+Full reference (all options, multi-vehicle filtering, debug capture, what's transmitted): **[docs/CONFIGURATION.md](docs/CONFIGURATION.md)**.
 
-### FreeTAK Server
-Default configuration should work. Ensure TCP port 8085 is open.
+## Documentation
 
-### TAK Server
-Configure a TCP input on port 8085 (or your chosen port).
+- **[Documentation index](docs/README.md)** — start here
+- [Architecture](docs/ARCHITECTURE.md) · [Docker guide](docs/DOCKER.md) · [Tesla authentication](docs/AUTHENTICATION.md) · [Configuration & operations](docs/CONFIGURATION.md) · [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [CHANGELOG](CHANGELOG.md) · [Releases](https://github.com/joshuafuller/TeslaOnTarget/releases) · [Roadmap](docs/ROADMAP.md) · [Contributing](CONTRIBUTING.md)
 
-### Network Requirements
-- Firewall must allow TCP connections to TAK server (plaintext only in v1.0)
-- No authentication required (or configure as needed)
-- TAK clients must be on same network or have routing to server
-- **Security**: Keep TAK traffic on local network only due to plaintext limitation
+## Known limitations
 
-## Management Commands
+- No SSL/TLS — plaintext TCP only (planned; see the roadmap)
+- Wakes the vehicle once on startup only (by design, to preserve battery)
+- No authentication to the TAK server — relies on network security
 
-Single control script for all operations:
+## License
 
-```bash
-./teslaontarget.sh start     # Start tracking in background
-./teslaontarget.sh stop      # Stop tracking
-./teslaontarget.sh restart   # Restart tracking
-./teslaontarget.sh status    # Check if running
-./teslaontarget.sh logs      # View live logs
-./teslaontarget.sh help      # Show all commands
-```
-
-For Tesla authentication:
-```bash
-python3 -m teslaontarget.auth  # Set up or refresh Tesla authentication
-```
-
-## Verifying Installation
-
-After starting TeslaOnTarget, verify it's working:
-
-1. **Check logs**: `./docker-run.sh logs` (Docker) or `./teslaontarget.sh logs` (Traditional)
-   - Should show "Connected to TAK server"
-   - Should show "Successfully sent CoT packet"
-
-2. **Check TAK client**:
-   - Open iTAK/ATAK/WebTAK
-   - Look for your vehicle on the map
-   - Verify updates every 10 seconds
-
-3. **Check status**: `./docker-run.sh status`
-   - Should show "TeslaOnTarget is running"
-
-## Troubleshooting
-
-### Vehicle Not Appearing in TAK
-1. Check TAK server connectivity: `telnet your-tak-server 8085`
-2. Verify vehicle is online in Tesla app
-3. Check logs: `./teslaontarget.sh logs`
-4. Ensure TAK client is connected to same server
-
-### Authentication Issues
-```bash
-rm cache.json
-python3 -m teslaontarget.auth
-```
-
-### Vehicle Shows Wrong Location
-- Vehicle may be in parking garage (no GPS)
-- Wait 10 seconds for next update
-- Check if vehicle is actually at shown location
-
-### High Tesla Battery Drain
-- Normal: Vehicle is woken once on startup only
-- Abnormal: Check logs for repeated wake attempts
-- Solution: Restart the service
-
-## 📁 Project Structure
-
-```
-TeslaOnTarget/
-├── teslaontarget/        # Main package directory
-│   ├── __init__.py      # Package initialization
-│   ├── __main__.py      # Entry point
-│   ├── tesla_api.py     # Tesla API integration
-│   ├── cot.py           # CoT message generation
-│   ├── config_handler.py # Configuration management
-│   ├── tak_client.py    # TAK server connection
-│   ├── utils.py         # Helper functions
-│   └── auth.py          # Tesla authentication
-├── teslaontarget.sh     # Single control script (start/stop/status)
-├── config.py            # Your configuration (don't commit!)
-├── pyproject.toml       # Project metadata & dependencies (uv)
-├── uv.lock              # Pinned dependency lockfile
-├── docs/                # Detailed documentation
-│   ├── README.md        # Full documentation
-│   └── tesla_api_reference.md  # Tesla API details
-└── tests/               # Unit tests
-```
-
-## Security Considerations
-
-- **Never commit** `config.py` or `cache.json` to version control
-- **Plaintext Only**: v1.0 uses unencrypted TCP - keep on local network only
-- Run TeslaOnTarget on same machine or network as TAK server
-- Keep your TAK server behind a firewall or VPN
-- Use network segmentation for TAK infrastructure
-- Rotate Tesla tokens periodically (automatic via TeslaPy)
-- Monitor `teslaontarget.log` for suspicious activity
-
-## Multi-Vehicle Support
-
-TeslaOnTarget supports tracking multiple vehicles from a single instance. By default, it will track all vehicles on your Tesla account. You can also configure it to track specific vehicles:
-
-```python
-# In config.py - Track all vehicles (default)
-VEHICLE_FILTER = []
-
-# Track specific vehicles by display name
-VEHICLE_FILTER = ["Model Y", "Cybertruck"]
-
-# Track specific vehicles by VIN
-VEHICLE_FILTER = ["5YJ3E1EA8NF000000", "5YJ3E1EA8NF000001"]
-
-# Mix display names and VINs
-VEHICLE_FILTER = ["Model Y", "5YJ3E1EA8NF000001"]
-```
-
-Each vehicle:
-- Gets its own unique identifier in TAK
-- Has separate position caching (last_position_VIN.json)
-- Runs in its own thread for independent tracking
-- Shares a single TAK server connection
-
-## Known Limitations
-
-- **No SSL/TLS support** - plaintext TCP only (SSL planned for v2.0)
-- Updates only when vehicle is awake or every 10 seconds when asleep (last position)
-- Cannot wake vehicle remotely after initial startup (by design)
-- No authentication to TAK server (depends on network security)
-
-## 📊 Data Transmitted
-
-TeslaOnTarget sends the following in each CoT message:
-- GPS Position (latitude/longitude)
-- Heading (0-360 degrees)
-- Speed (when moving)
-- Battery level (percentage)
-- Charging state
-- Vehicle name as callsign
-
-## Roadmap
-
-See [docs/ROADMAP.md](docs/ROADMAP.md) for planned features, including SSL/TLS support in v2.0.
-
-## Contributing
-
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-## 📜 License
-
-MIT License - see [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- [TeslaPy](https://github.com/tdorssers/TeslaPy) - Tesla API Python implementation
-- Tesla owners community for API documentation
-
-## Disclaimer
-
-This project is not affiliated with Tesla, Inc. Use at your own risk. Be mindful of:
-- Tesla API rate limits
-- Vehicle battery consumption
-- Local laws regarding vehicle tracking
-
-## 🐛 Debug Mode & Data Analysis
-
-When `DEBUG_MODE = True` in your config.py, all Tesla API responses are saved to the `tesla_api_captures/` directory. This is useful for:
-
-- Debugging issues with speed, vehicle state detection, etc.
-- Analyzing Tesla API responses
-- Replaying drive data for development
-
-### Analyzing Captured Data
-
-Two analysis tools are available:
-
-1. **Quick replay tool** - Shows extracted data:
-```bash
-python3 tools/replay_captures.py
-```
-
-2. **Full analysis tool** - Analyzes complete API responses:
-```bash
-python3 tools/analyze_full_captures.py
-```
-
-The full analysis tool will:
-- List ALL available fields in the Tesla API
-- Find all vehicle state related fields
-- Show fields that change between captures
-- Provide detailed state analysis
-
-Perfect for discovering new fields and debugging issues!
-
-## 📞 Support
-
-- **Issues**: [GitHub Issues](https://github.com/yourusername/TeslaOnTarget/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/TeslaOnTarget/discussions)
-- **Documentation**: See [docs/](docs/) directory
+MIT — see [LICENSE](LICENSE). Not affiliated with Tesla, Inc. Use responsibly: mind Tesla API rate limits, battery consumption, and local laws on vehicle tracking.
 
 ---
 
 Made with ❤️ for the TAK community
-

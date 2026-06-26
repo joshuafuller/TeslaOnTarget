@@ -4,9 +4,12 @@
 
 ### Getting Started
 - [Main README](../README.md) - Project overview and quick start
+- [ARCHITECTURE.md](ARCHITECTURE.md) - How it works: modules, runtime flow, diagrams
 - [AUTHENTICATION.md](AUTHENTICATION.md) - Tesla authentication guide
 - [DOCKER.md](DOCKER.md) - Complete Docker guide
 - [DOCKER_QUICKSTART.md](DOCKER_QUICKSTART.md) - Docker quick reference
+- [CONFIGURATION.md](CONFIGURATION.md) - All settings, multi-vehicle, debug mode, operations
+- [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - Common problems and fixes
 
 ### Development
 - [CONTRIBUTING.md](../CONTRIBUTING.md) - How to contribute
