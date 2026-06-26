@@ -14,9 +14,14 @@ Exit 0 if all mutants are killed; exit 1 (and lists survivors) otherwise.
 """
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
+
+# Never write .pyc while mutating: the mutate->import->revert cycle can finish
+# within one mtime tick, leaving a stale *mutated* .pyc that later imports reuse.
+_ENV = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -98,7 +103,7 @@ def run() -> int:
             result = subprocess.run(
                 ["uv", "run", "pytest", test, "-q", "--no-header",
                  "-p", "no:cacheprovider"],
-                cwd=ROOT, capture_output=True, text=True, timeout=180,
+                cwd=ROOT, capture_output=True, text=True, timeout=180, env=_ENV,
             )
             killed = result.returncode != 0
         finally:

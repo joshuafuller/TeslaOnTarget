@@ -65,14 +65,15 @@ def _security_remark(data, shift_state):
     locked = data.get("locked")
     if locked is not None:
         text += f" | Doors: {'Locked' if locked else 'Unlocked'}"
+    # `or 0` guards against Tesla returning null for these fields (None > 0 raises).
     windows_open = [label for key, label in (
         ("fd_window", "FD"), ("fp_window", "FP"),
-        ("rd_window", "RD"), ("rp_window", "RP")) if data.get(key, 0) > 0]
+        ("rd_window", "RD"), ("rp_window", "RP")) if (data.get(key) or 0) > 0]
     if windows_open:
         text += f" | WINDOWS OPEN: {','.join(windows_open)}"
-    if data.get("ft", 0) > 0:
+    if (data.get("ft") or 0) > 0:
         text += " | FRUNK OPEN"
-    if data.get("rt", 0) > 0:
+    if (data.get("rt") or 0) > 0:
         text += " | TRUNK OPEN"
     return text
 

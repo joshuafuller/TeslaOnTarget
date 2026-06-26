@@ -166,6 +166,15 @@ class TestRemarks:
         r = _remarks({"shift_state": None, "sentry_mode": True})
         assert "Gear: P" in r and "Sentry: ON" in r
 
+    def test_none_window_and_trunk_fields_do_not_crash(self):
+        # Regression: Tesla's vehicle_state can return null for window/trunk
+        # fields; extract_relevant_data passes them straight through, so
+        # `None > 0` would raise TypeError mid-packet and drop the send.
+        r = _remarks({"shift_state": "P", "fd_window": None, "fp_window": None,
+                      "rd_window": None, "rp_window": None, "ft": None, "rt": None})
+        assert "WINDOWS OPEN" not in r
+        assert "FRUNK OPEN" not in r and "TRUNK OPEN" not in r
+
 
 class TestFormatForTak:
     def test_prepends_xml_declaration_and_returns_bytes(self):
