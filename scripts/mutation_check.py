@@ -83,8 +83,9 @@ MUTATIONS = [
      "tests/test_health.py", "health: alert url guard inverted"),
     ("teslaontarget/health.py", "if not self._alerted:", "if self._alerted:",
      "tests/test_health.py", "health: alert dedup guard inverted"),
-    ("teslaontarget/health.py", "self._alerted = False  # healthy",
-     "self._alerted = True  # healthy",
+    ("teslaontarget/health.py",
+     "self._alerted = False  # healthy -> re-arm alerting for the next episode",
+     "self._alerted = True  # healthy -> re-arm alerting for the next episode",
      "tests/test_health.py", "health: alert re-arm on recovery"),
 
     # ---- health.py ----

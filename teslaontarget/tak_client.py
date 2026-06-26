@@ -88,6 +88,8 @@ class TAKClient:
         """
         if not self.connected and not self.connect():
             logger.warning("TAK server unreachable; dropping update, reconnecting in background")
+            self.last_error = "TAK server unreachable"
+            self.last_error_time = time.time()
             self.start_background_reconnect()
             return False
 

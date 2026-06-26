@@ -82,7 +82,8 @@ class HealthMonitor:
                 self.alert_url, data=message.encode("utf-8"),
                 headers={"Title": "TeslaOnTarget", "Content-Type": "text/plain"},
             )
-            urllib.request.urlopen(req, timeout=5)
+            with urllib.request.urlopen(req, timeout=5):
+                pass  # close the response so we don't leak sockets/fds
         except Exception as e:
             logger.warning("Failed to send alert: %s", e)
 

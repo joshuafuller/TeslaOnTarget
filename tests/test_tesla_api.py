@@ -15,10 +15,13 @@ def cot(tmp_path, monkeypatch, make_config):
 
 
 class TestInit:
-    def test_uses_supplied_tak_client(self, cot):
-        assert cot.vehicle_id == "VIN123"
-        assert cot.tak_client is not None
-        assert cot.debug_mode is False
+    def test_uses_supplied_tak_client(self, tmp_path, monkeypatch, make_config):
+        monkeypatch.chdir(tmp_path)
+        sentinel = MagicMock()
+        c = TeslaCoT(make_config(), vehicle_id="VIN123", tak_client=sentinel)
+        assert c.tak_client is sentinel  # the supplied client is used, not a new one
+        assert c.vehicle_id == "VIN123"
+        assert c.debug_mode is False
 
     def test_creates_tak_client_when_none(self, tmp_path, monkeypatch, make_config):
         monkeypatch.chdir(tmp_path)
