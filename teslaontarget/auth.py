@@ -3,20 +3,19 @@
 
 import webbrowser
 from teslapy import Tesla
-from .config_handler import Config
+from .config_handler import load_config
 
 
 def main():
-    # Load configuration
-    Config.load_from_file()
-    
+    config = load_config()
+
     print("Tesla Authentication for TeslaOnTarget")
     print("=" * 40)
-    print(f"Account: {Config.TESLA_USERNAME}")
+    print(f"Account: {config.tesla_username}")
     print()
-    
+
     # Initialize Tesla API
-    tesla = Tesla(Config.TESLA_USERNAME)
+    tesla = Tesla(config.tesla_username)
     
     # Check if we already have a valid token
     if tesla.authorized:
