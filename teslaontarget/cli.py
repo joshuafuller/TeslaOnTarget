@@ -1,45 +1,49 @@
 """Command line interface for TeslaOnTarget."""
 
+import os
 import sys
 import time
 import signal
 import logging
 import argparse
 import threading
+
 from teslapy import Tesla
 
 from .tesla_api import TeslaCoT
+from .tak_client import TAKClient
 from .config_handler import Config
 from .health import HealthMonitor
 
-# Set up logging
-import os
-
-# Determine log file path - use /logs if available (Docker), otherwise current directory
-log_handlers = [logging.StreamHandler()]  # Always log to stdout
-
-# Try to add file handler
-try:
-    if os.path.exists('/logs') and os.access('/logs', os.W_OK):
-        log_path = '/logs/teslaontarget.log'
-    else:
-        log_path = 'teslaontarget.log'
-    
-    file_handler = logging.FileHandler(log_path)
-    log_handlers.append(file_handler)
-except (IOError, OSError) as e:
-    # If we can't write to file, just use stdout
-    print(f"Warning: Unable to create log file: {e}. Logging to stdout only.")
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=log_handlers
-)
 logger = logging.getLogger(__name__)
 
-# Global variable for graceful shutdown
+# Global flag for graceful shutdown (flipped by the signal handler).
 running = True
+
+
+def _make_log_handlers():
+    """Build logging handlers: always stdout, plus a file handler when writable."""
+    handlers = [logging.StreamHandler()]
+    try:
+        if os.path.exists('/logs') and os.access('/logs', os.W_OK):
+            log_path = '/logs/teslaontarget.log'
+        else:
+            log_path = 'teslaontarget.log'
+        handlers.append(logging.FileHandler(log_path))
+    except (IOError, OSError) as e:
+        print(f"Warning: Unable to create log file: {e}. Logging to stdout only.")
+    return handlers
+
+
+def _configure_logging():
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=_make_log_handlers(),
+    )
+
+
+_configure_logging()
 
 
 def signal_handler(sig, frame):
@@ -49,139 +53,135 @@ def signal_handler(sig, frame):
     running = False
 
 
-def main():
-    """Main entry point for TeslaOnTarget."""
+def _parse_args():
     parser = argparse.ArgumentParser(description='Bridge Tesla vehicles with TAK servers')
     parser.add_argument('--config', help='Path to config.py file')
     parser.add_argument('--debug', action='store_true', help='Enable debug logging')
-    args = parser.parse_args()
-    
-    # Set debug logging if requested
+    return parser.parse_args()
+
+
+def _load_and_validate_config(args):
+    """Apply --debug, load config, and exit(1) if it does not validate."""
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
-    
-    # Load configuration
     Config.load_from_file(args.config)
-    
-    # Validate configuration
     if not Config.validate():
         logger.error("Invalid configuration. Please check config.py")
         sys.exit(1)
-    
-    # Set up signal handlers
+
+
+def _select_vehicles(tesla):
+    """Return vehicles to track, applying VEHICLE_FILTER. Exits if none."""
+    vehicles = tesla.vehicle_list()
+    if not vehicles:
+        logger.error("No vehicles found on Tesla account")
+        sys.exit(1)
+    logger.info(f"Found {len(vehicles)} vehicle(s) on account")
+
+    vehicle_filter = getattr(Config, 'VEHICLE_FILTER', [])
+    if not vehicle_filter:
+        logger.info("No vehicle filter configured - tracking all vehicles")
+        return vehicles
+
+    filtered = []
+    for vehicle in vehicles:
+        display_name = vehicle.get('display_name', '')
+        vin = vehicle.get('vin', '')
+        if display_name in vehicle_filter or vin in vehicle_filter:
+            filtered.append(vehicle)
+            logger.info(f"Selected vehicle: {display_name} (VIN: {vin})")
+    if not filtered:
+        logger.error(f"No vehicles matched the filter: {vehicle_filter}")
+        sys.exit(1)
+    logger.info(f"Tracking {len(filtered)} vehicle(s) based on filter")
+    return filtered
+
+
+def _build_health_monitor(tak_client):
+    """Construct a HealthMonitor from Config, treating <=0 thresholds as unset."""
+    configured_no_send = getattr(Config, 'HEALTH_NO_SEND_SECONDS', 0) or 0
+    configured_check = getattr(Config, 'HEALTH_CHECK_INTERVAL', 0) or 0
+    configured_hard = getattr(Config, 'HEALTH_HARD_RESTART_SECONDS', 0) or 0
+    health_file = getattr(Config, 'HEALTH_FILE', 'health.json')
+
+    default_no_send = max(120, Config.API_LOOP_DELAY * 8)
+    max_no_send = configured_no_send if configured_no_send > 0 else default_no_send
+    check_interval = configured_check if configured_check > 0 else 15
+    hard_restart = configured_hard if configured_hard > 0 else (max_no_send * 5)
+
+    logger.info(
+        "Health thresholds: no-send=%ss, check=%ss, hard-restart=%ss -> file=%s",
+        max_no_send, check_interval, hard_restart, health_file,
+    )
+    return HealthMonitor(
+        tak_client, health_file=health_file, max_no_send_seconds=max_no_send,
+        check_interval=check_interval, hard_restart_seconds=hard_restart,
+    )
+
+
+def _wake_vehicles(vehicles):
+    """Send a wake command to any asleep vehicle (best-effort)."""
+    logger.info("Waking up vehicles...")
+    for vehicle in vehicles:
+        try:
+            if vehicle.get("state") == "asleep":
+                logger.info(f"Waking up {vehicle['display_name']}...")
+                vehicle.sync_wake_up()
+        except Exception as e:
+            logger.warning(f"Could not wake {vehicle['display_name']}: {e}")
+
+
+def _start_tracking_threads(vehicles, tak_client):
+    """Spawn one daemon tracking thread per vehicle; return the thread list."""
+    threads = []
+    for vehicle in vehicles:
+        vehicle_id = vehicle.get('vin', vehicle.get('id_s', 'unknown'))
+        tesla_cot = TeslaCoT(vehicle_id=vehicle_id, tak_client=tak_client)
+        logger.info(f"Starting tracking for {vehicle['display_name']} (VIN: {vehicle.get('vin', 'N/A')})")
+        thread = threading.Thread(
+            target=tesla_cot.fetch_and_send_data_for_vehicle,
+            args=(vehicle,), daemon=True,
+            name=f"Vehicle-{vehicle['display_name']}",
+        )
+        thread.start()
+        threads.append(thread)
+    return threads
+
+
+def _monitor_threads(threads):
+    """Watch tracking threads until shutdown is requested."""
+    logger.info("All tracking threads started")
+    logger.info(f"Sending updates every {Config.API_LOOP_DELAY} seconds")
+    logger.info("Press Ctrl+C to stop\n")
+    while running:
+        alive_count = sum(1 for t in threads if t.is_alive())
+        if alive_count < len(threads):
+            logger.warning(f"Only {alive_count}/{len(threads)} threads running")
+        time.sleep(5)
+
+
+def main():
+    """Main entry point for TeslaOnTarget."""
+    args = _parse_args()
+    _load_and_validate_config(args)
+
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
-    
     logger.info("Starting TeslaOnTarget...")
-    
+
+    health = None
     try:
-        # Initialize Tesla API
         tesla = Tesla(Config.TESLA_USERNAME)
-        
-        # Get vehicles
-        vehicles = tesla.vehicle_list()
-        if not vehicles:
-            logger.error("No vehicles found on Tesla account")
-            sys.exit(1)
-            
-        logger.info(f"Found {len(vehicles)} vehicle(s) on account")
-        
-        # Filter vehicles if configured
-        vehicle_filter = getattr(Config, 'VEHICLE_FILTER', [])
-        if vehicle_filter:
-            filtered_vehicles = []
-            for vehicle in vehicles:
-                display_name = vehicle.get('display_name', '')
-                vin = vehicle.get('vin', '')
-                if display_name in vehicle_filter or vin in vehicle_filter:
-                    filtered_vehicles.append(vehicle)
-                    logger.info(f"Selected vehicle: {display_name} (VIN: {vin})")
-            
-            if not filtered_vehicles:
-                logger.error(f"No vehicles matched the filter: {vehicle_filter}")
-                sys.exit(1)
-            
-            vehicles = filtered_vehicles
-            logger.info(f"Tracking {len(vehicles)} vehicle(s) based on filter")
-        else:
-            logger.info("No vehicle filter configured - tracking all vehicles")
-        
-        # Create shared TAK client for all vehicles
-        from .tak_client import TAKClient
+        vehicles = _select_vehicles(tesla)
+
         shared_tak_client = TAKClient(Config.COT_URL)
 
-        # Start health monitor watching TAK sends
-        # docker-entrypoint may write HEALTH_* as 0 to indicate "use defaults".
-        # Treat <= 0 as unset and apply sane defaults.
-        configured_no_send = getattr(Config, 'HEALTH_NO_SEND_SECONDS', 0) or 0
-        configured_check = getattr(Config, 'HEALTH_CHECK_INTERVAL', 0) or 0
-        configured_hard = getattr(Config, 'HEALTH_HARD_RESTART_SECONDS', 0) or 0
-        health_file = getattr(Config, 'HEALTH_FILE', 'health.json')
-
-        # Defaults scale with API loop delay
-        default_no_send = max(120, Config.API_LOOP_DELAY * 8)
-        default_check = 15
-
-        max_no_send = configured_no_send if configured_no_send > 0 else default_no_send
-        check_interval = configured_check if configured_check > 0 else default_check
-        hard_restart = configured_hard if configured_hard > 0 else (max_no_send * 5)
-
-        logger.info(
-            "Health thresholds: no-send=%ss, check=%ss, hard-restart=%ss -> file=%s",
-            max_no_send,
-            check_interval,
-            hard_restart,
-            health_file,
-        )
-        health = HealthMonitor(
-            shared_tak_client,
-            health_file=health_file,
-            max_no_send_seconds=max_no_send,
-            check_interval=check_interval,
-            hard_restart_seconds=hard_restart,
-        )
+        health = _build_health_monitor(shared_tak_client)
         health.start()
-        
-        # Create threads for each vehicle
-        threads = []
-        
-        # Wake vehicles if needed
-        logger.info("Waking up vehicles...")
-        for vehicle in vehicles:
-            try:
-                if vehicle.get("state") == "asleep":
-                    logger.info(f"Waking up {vehicle['display_name']}...")
-                    vehicle.sync_wake_up()
-            except Exception as e:
-                logger.warning(f"Could not wake {vehicle['display_name']}: {e}")
-        
-        # Start tracking threads
-        for vehicle in vehicles:
-            # Create a separate TeslaCoT instance for each vehicle
-            vehicle_id = vehicle.get('vin', vehicle.get('id_s', 'unknown'))
-            tesla_cot = TeslaCoT(vehicle_id=vehicle_id, tak_client=shared_tak_client)
-            
-            logger.info(f"Starting tracking for {vehicle['display_name']} (VIN: {vehicle.get('vin', 'N/A')})")
-            thread = threading.Thread(
-                target=tesla_cot.fetch_and_send_data_for_vehicle,
-                args=(vehicle,),
-                daemon=True,
-                name=f"Vehicle-{vehicle['display_name']}"
-            )
-            thread.start()
-            threads.append(thread)
-            
-        logger.info("All tracking threads started")
-        logger.info(f"Sending updates every {Config.API_LOOP_DELAY} seconds")
-        logger.info("Press Ctrl+C to stop\n")
-        
-        # Monitor threads
-        while running:
-            alive_count = sum(1 for t in threads if t.is_alive())
-            if alive_count < len(threads):
-                logger.warning(f"Only {alive_count}/{len(threads)} threads running")
-            time.sleep(5)
-            
+
+        _wake_vehicles(vehicles)
+        threads = _start_tracking_threads(vehicles, shared_tak_client)
+        _monitor_threads(threads)
     except KeyboardInterrupt:
         logger.info("Interrupted by user")
     except Exception as e:
@@ -190,10 +190,11 @@ def main():
     finally:
         logger.info("TeslaOnTarget stopped")
         try:
-            health.stop()
+            if health:
+                health.stop()
         except Exception:
             pass
-        
-        
+
+
 if __name__ == '__main__':
     main()

@@ -19,12 +19,8 @@ class Config:
     MPH_TO_MS = 0.44704
     
     @classmethod
-    def load_from_file(cls, config_path=None):
-        """Load configuration from Python file.
-        
-        Args:
-            config_path: Path to config.py file
-        """
+    def _resolve_config_path(cls, config_path):
+        """Resolve the config path to use (explicit arg > env var > package-adjacent)."""
         if config_path is None:
             # Prefer an explicit path (set by the container) so config loading
             # never depends on where the package happens to be installed. Only
@@ -34,13 +30,20 @@ class Config:
             if env_path:
                 env_path = os.path.expanduser(env_path)
                 if os.path.isfile(env_path):
-                    config_path = env_path
-        if config_path is None:
+                    return env_path
             # Fall back to config.py next to the package
             parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             config_path = os.path.join(parent_dir, 'config.py')
+        return os.path.expanduser(config_path)
 
-        config_path = os.path.expanduser(config_path)
+    @classmethod
+    def load_from_file(cls, config_path=None):
+        """Load configuration from a Python file.
+
+        Args:
+            config_path: Path to config.py file
+        """
+        config_path = cls._resolve_config_path(config_path)
         if not os.path.isfile(config_path):
             logger.warning(f"Config file not found at {config_path}, using defaults")
             return
