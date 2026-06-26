@@ -60,7 +60,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/repo" "$TRIVY_IMAGE" \
             config --format sarif --output /repo/trivy-config.sarif \
-            --exit-code 0 --no-progress /repo
+            --exit-code 0 /repo
       - name: Upload results to Security tab
         if: ${{ always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
         uses: github/codeql-action/upload-sarif@v3
