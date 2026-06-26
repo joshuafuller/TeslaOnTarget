@@ -3,7 +3,6 @@ import importlib.util
 
 import pytest
 
-import teslaontarget.config_handler as ch
 from teslaontarget.config_handler import Config
 
 _DEFAULTS = {

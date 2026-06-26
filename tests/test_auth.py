@@ -1,5 +1,5 @@
 """Tests for teslaontarget.auth.main (interactive Tesla auth, fully mocked)."""
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 

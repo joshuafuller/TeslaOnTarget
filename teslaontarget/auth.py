@@ -5,6 +5,7 @@ import webbrowser
 from teslapy import Tesla
 from .config_handler import Config
 
+
 def main():
     # Load configuration
     Config.load_from_file()
