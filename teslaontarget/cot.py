@@ -1,9 +1,10 @@
 """Cursor on Target (CoT) message generation and handling."""
 
-import xml.etree.ElementTree as ET
-from datetime import datetime, timezone, timedelta
-import hashlib
 import logging
+import xml.etree.ElementTree as ET
+from datetime import datetime, timedelta, timezone
+
+from .constants import MPH_TO_MS
 
 logger = logging.getLogger(__name__)
 
@@ -188,7 +189,7 @@ def generate_cot_packet(data):
     if speed_mph is None:
         speed_mph = 0
     # Convert mph to m/s: 1 mph = 0.44704 m/s
-    speed_ms = speed_mph * 0.44704
+    speed_ms = speed_mph * MPH_TO_MS
     track.set("speed", f"{speed_ms:.8f}")
     
     # Add remarks with Tesla-specific info

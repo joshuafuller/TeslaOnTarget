@@ -16,8 +16,7 @@ class Config:
     DEAD_RECKONING_DELAY = 1
     TESLA_USERNAME = None
     LAST_POSITION_FILE = "last_known_position.json"
-    MPH_TO_MS = 0.44704
-    
+
     @classmethod
     def _resolve_config_path(cls, config_path):
         """Resolve the config path to use (explicit arg > env var > package-adjacent)."""

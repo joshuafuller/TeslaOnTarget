@@ -1,25 +1,20 @@
 import json
-from collections import deque
-import time
-import socket
-import xml.etree.ElementTree as ET
-from urllib.parse import urlparse
-import hashlib
-import threading
-from math import radians, cos, sin
 import logging
-import re
 import os
+import threading
+import time
+from collections import deque
 from datetime import datetime
+from math import cos, degrees, radians, sin
 
-# Set up logging
-logger = logging.getLogger(__name__)
-
-# Import from new package structure
 from .config_handler import Config
-from .utils import calculate_distance, save_json_file, load_json_file
-from .cot import generate_cot_packet, format_cot_for_tak
+from .constants import EARTH_RADIUS_M, MPH_TO_MS
+from .cot import format_cot_for_tak, generate_cot_packet
 from .tak_client import TAKClient
+from .vehicle_mapper import map_vehicle_data
+from .utils import load_json_file, save_json_file
+
+logger = logging.getLogger(__name__)
 
 # Tesla get_vehicle_data endpoint sets
 _INIT_ENDPOINTS = ('location_data;drive_state;charge_state;vehicle_state;'
@@ -58,7 +53,8 @@ class TeslaCoT:
         self.consecutive_no_gps_count = 0
         
         # Debug mode - captures all Tesla API responses
-        self.debug_mode = getattr(self.config, 'DEBUG_MODE', True)  # Default to True for now
+        # Opt-in: debug capture writes every API response to disk, so default off.
+        self.debug_mode = getattr(self.config, 'DEBUG_MODE', False)
         self.debug_dir = "tesla_api_captures"
         self.capture_count = 0
         if self.debug_mode:
@@ -113,104 +109,6 @@ class TeslaCoT:
             logger.info(f"Capture #{self.capture_count}: Saved FULL Tesla API response to {filepath}")
         except Exception as e:
             logger.error(f"Failed to save debug capture: {e}")
-    
-    def extract_relevant_data(self, vehicle_data, vehicle):
-        """Extract relevant data from Tesla API response."""
-        drive_state = vehicle_data.get("drive_state", {})
-        charge_state = vehicle_data.get("charge_state", {})
-        vehicle_state = vehicle_data.get("vehicle_state", {})
-        climate_state = vehicle_data.get("climate_state", {})
-        vehicle_config = vehicle_data.get("vehicle_config", {})
-        
-        # Generate unique ID for this vehicle
-        vehicle_id = vehicle.get("id_s", vehicle.get("vehicle_id", "unknown"))
-        uid = f"TESLA-{hashlib.md5(str(vehicle_id).encode()).hexdigest()[:8]}"
-        
-        # Get vehicle model from config
-        display_name = vehicle.get("display_name", "Tesla")
-        
-        # Build detailed model string from vehicle config
-        car_type = vehicle_config.get("car_type", "")
-        year = vehicle_config.get("year", "")
-        trim = vehicle_config.get("trim_badging", "")
-        
-        # Map car types to model names
-        model_map = {
-            "models": "Model S",
-            "modelx": "Model X",
-            "model3": "Model 3",
-            "modely": "Model Y",
-            "cybertruck": "Cybertruck"
-        }
-        
-        model_name = model_map.get(car_type.lower(), car_type)
-        
-        # Parse trim badging - common codes:
-        # p = Performance, l = Long Range, s = Standard Range
-        # 74 = 2024, 73 = 2023, etc.
-        # d = Dual Motor (AWD), s = Single Motor (RWD)
-        if trim:
-            # For Model Y Performance, p74d might not be year-related
-            # Check if vehicle_config has explicit year
-            if not year:
-                # If year not provided, don't show it
-                pass  # Will just show "Model Y Performance"
-            
-            # Determine variant
-            if trim.lower().startswith('p'):
-                variant = "Performance"
-            elif trim.lower().startswith('l'):
-                variant = "Long Range"
-            else:
-                variant = trim.upper()
-                
-            vehicle_model = f"{model_name} {variant}"
-        else:
-            vehicle_model = model_name
-            
-        if year:
-            vehicle_model = f"{year} {vehicle_model}"
-        
-        data = {
-            "UID": uid,
-            "latitude": drive_state.get("latitude"),
-            "longitude": drive_state.get("longitude"),
-            "speed": drive_state.get("speed", 0),
-            "heading": drive_state.get("heading", 0),
-            "elevation": drive_state.get("native_location_supported", 0),  # Tesla doesn't provide elevation
-            "battery_level": charge_state.get("battery_level", 0),
-            "charging_state": charge_state.get("charging_state", "Disconnected"),
-            "vehicle_name": vehicle_state.get("vehicle_name", display_name),
-            "display_name": display_name,
-            "vehicle_model": vehicle_model,
-            "inside_temp": climate_state.get("inside_temp"),
-            "outside_temp": climate_state.get("outside_temp"),
-            "sentry_mode": vehicle_state.get("sentry_mode", False),
-            "locked": vehicle_state.get("locked", None),
-            "shift_state": drive_state.get("shift_state"),  # P, D, R, N
-            "battery_range": charge_state.get("battery_range"),  # Miles remaining
-            "is_climate_on": climate_state.get("is_climate_on", False),
-            "charge_port_door_open": charge_state.get("charge_port_door_open", False),
-            # Charging time info
-            "time_to_full_charge": charge_state.get("time_to_full_charge", 0),  # Hours to 100%
-            "charge_limit_soc": charge_state.get("charge_limit_soc", 80),  # Target charge %
-            "minutes_to_full_charge": charge_state.get("minutes_to_full_charge", 0),  # Minutes to target
-            # Window positions (0 = closed, >0 = open)
-            "fd_window": vehicle_state.get("fd_window", 0),  # Front driver
-            "fp_window": vehicle_state.get("fp_window", 0),  # Front passenger
-            "rd_window": vehicle_state.get("rd_window", 0),  # Rear driver
-            "rp_window": vehicle_state.get("rp_window", 0),  # Rear passenger
-            "ft": vehicle_state.get("ft", 0),  # Front trunk (frunk)
-            "rt": vehicle_state.get("rt", 0),  # Rear trunk
-            # Autopilot/FSD status
-            # Note: Tesla API may not always provide autopilot_state
-            "autopilot_state": vehicle_state.get("autopilot_state", 0),
-            "autopilot_style": vehicle_state.get("autopilot_style"),
-            "autopark_state": vehicle_state.get("autopark_state_v3"),
-            "timestamp": time.time()
-        }
-        
-        return data
     
     def send_to_cot(self, data):
         """Send data to TAK server via CoT."""
@@ -269,7 +167,7 @@ class TeslaCoT:
                     continue
                     
                 # Tesla API returns speed in mph
-                speed_ms = speed * self.config.MPH_TO_MS
+                speed_ms = speed * MPH_TO_MS
                 heading = initial_data.get('heading', 0)
                 if heading is None:
                     heading = 0
@@ -281,19 +179,14 @@ class TeslaCoT:
                 # Calculate new position from current position
                 lat_rad = radians(current_lat)
                 lon_rad = radians(current_lon)
-                
-                # Earth radius in meters
-                R = 6371000
-                
-                # Calculate new latitude
-                new_lat_rad = lat_rad + (distance / R) * cos(heading_rad)
-                
-                # Calculate new longitude
-                new_lon_rad = lon_rad + (distance / (R * cos(lat_rad))) * sin(heading_rad)
-                
+
+                # Calculate new latitude/longitude (equirectangular step)
+                new_lat_rad = lat_rad + (distance / EARTH_RADIUS_M) * cos(heading_rad)
+                new_lon_rad = lon_rad + (distance / (EARTH_RADIUS_M * cos(lat_rad))) * sin(heading_rad)
+
                 # Convert back to degrees
-                current_lat = new_lat_rad * 180 / 3.14159265359
-                current_lon = new_lon_rad * 180 / 3.14159265359
+                current_lat = degrees(new_lat_rad)
+                current_lon = degrees(new_lon_rad)
                 
                 # Create updated data packet
                 updated_data = initial_data.copy()
@@ -359,7 +252,7 @@ class TeslaCoT:
                 return True
             logger.error(f"No cached data available for {vehicle.get('display_name', 'Unknown')}")
             return False
-        initial_data = self.extract_relevant_data(vehicle_data, vehicle)
+        initial_data = map_vehicle_data(vehicle_data, vehicle)
         if self._has_coordinates(initial_data):
             self.last_known_valid_data = initial_data
             self.save_last_position_to_file(initial_data)
@@ -465,7 +358,7 @@ class TeslaCoT:
             time.sleep(self._handle_api_error(e))
             return
 
-        relevant_data = self.extract_relevant_data(vehicle_data, vehicle)
+        relevant_data = map_vehicle_data(vehicle_data, vehicle)
         speed = relevant_data.get('speed', 0)
         speed_display = f"{speed}mph" if speed is not None else "0mph"
         dr_status = "ENABLED" if getattr(self.config, 'DEAD_RECKONING_ENABLED', False) else "DISABLED"

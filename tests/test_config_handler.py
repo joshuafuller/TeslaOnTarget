@@ -3,7 +3,6 @@ import importlib.util
 
 import pytest
 
-import teslaontarget.config_handler as ch
 from teslaontarget.config_handler import Config
 
 _DEFAULTS = {
@@ -12,7 +11,6 @@ _DEFAULTS = {
     "DEAD_RECKONING_DELAY": Config.DEAD_RECKONING_DELAY,
     "TESLA_USERNAME": Config.TESLA_USERNAME,
     "LAST_POSITION_FILE": Config.LAST_POSITION_FILE,
-    "MPH_TO_MS": Config.MPH_TO_MS,
 }
 
 
