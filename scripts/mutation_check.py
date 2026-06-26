@@ -100,6 +100,10 @@ MUTATIONS = [
     ("teslaontarget/tesla_api.py", 'uid = f"TESLA-{hashlib.md5(str(vehicle_id).encode()).hexdigest()[:8]}"',
      'uid = f"TESLA-{hashlib.md5(str(vehicle_id).encode()).hexdigest()[:7]}"',
      "tests/test_tesla_api.py", "tesla: UID md5 slice [:8] -> [:7]"),
+    ("teslaontarget/tesla_api.py",
+     "return data.get('latitude') is not None and data.get('longitude') is not None",
+     "return data.get('latitude') is None and data.get('longitude') is not None",
+     "tests/test_tesla_api.py", "tesla: _has_coordinates is-not-None -> is-None"),
 ]
 
 

@@ -4,15 +4,16 @@ import xml.etree.ElementTree as ET
 import pytest
 from hypothesis import HealthCheck, given, settings, strategies as st
 
-# Robust under mutmut/coverage instrumentation: no deadline, and allow the
-# class-method test to be driven by different executors across mutation runs.
-_PROP = settings(deadline=None, suppress_health_check=[HealthCheck.differing_executors])
 
 from teslaontarget.cot import (
     generate_cot_packet,
     format_cot_for_tak,
     celsius_to_fahrenheit,
 )
+
+# Robust under mutmut/coverage instrumentation: no deadline, and allow the
+# class-method test to be driven by different executors across mutation runs.
+_PROP = settings(deadline=None, suppress_health_check=[HealthCheck.differing_executors])
 
 
 def _parse(data):

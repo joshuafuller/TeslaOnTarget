@@ -70,7 +70,8 @@ class TestParseAndConfig:
 class TestSelectVehicles:
     def test_no_vehicles_exits(self, monkeypatch):
         monkeypatch.setattr(Config, "VEHICLE_FILTER", [], raising=False)
-        tesla = MagicMock(); tesla.vehicle_list.return_value = []
+        tesla = MagicMock()
+        tesla.vehicle_list.return_value = []
         with pytest.raises(SystemExit):
             cli._select_vehicles(tesla)
 
@@ -121,12 +122,8 @@ class TestBuildHealthMonitor:
 
 class TestWakeVehicles:
     def test_wakes_asleep_only(self):
-        asleep = {"state": "asleep", "display_name": "A"}
-        online = {"state": "online", "display_name": "B"}
-        asleep_v = MagicMock(); asleep_v.get.side_effect = asleep.get
-        asleep_v.__getitem__ = lambda s, k: asleep[k]
-        # simpler: use dict-like mocks
-        a = _vmock("asleep"); b = _vmock("online")
+        a = _vmock("asleep")
+        b = _vmock("online")
         cli._wake_vehicles([a, b])
         a.sync_wake_up.assert_called_once()
         b.sync_wake_up.assert_not_called()
@@ -161,8 +158,10 @@ class TestMonitorThreads:
     def test_runs_one_pass_then_stops(self, monkeypatch):
         monkeypatch.setattr(cli, "running", True)
         monkeypatch.setattr(Config, "API_LOOP_DELAY", 10, raising=False)
-        t_alive = MagicMock(); t_alive.is_alive.return_value = True
-        t_dead = MagicMock(); t_dead.is_alive.return_value = False
+        t_alive = MagicMock()
+        t_alive.is_alive.return_value = True
+        t_dead = MagicMock()
+        t_dead.is_alive.return_value = False
 
         def stop(_):
             cli.running = False
@@ -173,8 +172,10 @@ class TestMonitorThreads:
     def test_all_alive_no_warning(self, monkeypatch):
         monkeypatch.setattr(cli, "running", True)
         monkeypatch.setattr(Config, "API_LOOP_DELAY", 10, raising=False)
-        t1 = MagicMock(); t1.is_alive.return_value = True
-        t2 = MagicMock(); t2.is_alive.return_value = True
+        t1 = MagicMock()
+        t1.is_alive.return_value = True
+        t2 = MagicMock()
+        t2.is_alive.return_value = True
 
         def stop(_):
             cli.running = False

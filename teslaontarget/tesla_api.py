@@ -55,9 +55,8 @@ class TeslaCoT:
         self.consecutive_errors = 0
         self.last_rate_limit_time = 0
         self.max_wake_attempts = 3
-        # Loop state (promoted from locals so the loop body is testable)
+        # Loop state (promoted from a local so the loop body is testable)
         self.consecutive_no_gps_count = 0
-        self.vehicle_woken_once = True
         
         # Debug mode - captures all Tesla API responses
         self.debug_mode = getattr(self.config, 'DEBUG_MODE', True)  # Default to True for now
@@ -361,7 +360,7 @@ class TeslaCoT:
             logger.error(f"No cached data available for {vehicle.get('display_name', 'Unknown')}")
             return False
         initial_data = self.extract_relevant_data(vehicle_data, vehicle)
-        if initial_data.get('latitude') and initial_data.get('longitude'):
+        if self._has_coordinates(initial_data):
             self.last_known_valid_data = initial_data
             self.save_last_position_to_file(initial_data)
             logger.info(f"Saved initial position: {initial_data.get('latitude')}, {initial_data.get('longitude')}")
@@ -449,26 +448,13 @@ class TeslaCoT:
             logger.debug("Using last known position")
             self.send_to_cot(self.last_known_valid_data)
 
-    def _recheck_wake(self, vehicle):
-        """Wake the vehicle mid-loop if it is asleep (only when not already woken)."""
-        if self.vehicle_woken_once:
-            return
-        vehicle_list = vehicle._owner.vehicle_list()
-        for v in vehicle_list:
-            if v['id'] == vehicle['id']:
-                if v.get('state') == 'asleep':
-                    logger.info(f"Vehicle {vehicle.get('display_name')} is asleep. Waking for initial position...")
-                    try:
-                        vehicle.sync_wake_up()
-                        self.vehicle_woken_once = True
-                        logger.info("Vehicle woken successfully")
-                    except Exception as e:
-                        logger.warning(f"Failed to wake vehicle: {e}")
-                break
+    @staticmethod
+    def _has_coordinates(data):
+        """True when both coordinates are present (0.0 is a valid coordinate)."""
+        return data.get('latitude') is not None and data.get('longitude') is not None
 
     def _poll_once(self, vehicle):
         """Run one tracking iteration: fetch, process, and sleep one interval."""
-        self._recheck_wake(vehicle)
         try:
             vehicle_data = vehicle.get_vehicle_data(endpoints=_LOOP_ENDPOINTS)
             self.save_debug_capture(vehicle_data, "vehicle_data")
@@ -489,7 +475,7 @@ class TeslaCoT:
             logger.warning("autopilot_state field not available in Tesla API response - FSD detection may not work")
         logger.info(f"Got vehicle data: lat={relevant_data.get('latitude')}, lon={relevant_data.get('longitude')}, speed={speed_display}, battery={relevant_data.get('battery_level')}%, autopilot_state={ap_state}, UID={relevant_data.get('UID')}, dead_reckoning={dr_status}")
 
-        if relevant_data.get('latitude') and relevant_data.get('longitude'):
+        if self._has_coordinates(relevant_data):
             self._handle_valid_gps(relevant_data)
         else:
             self._handle_missing_gps()
@@ -499,7 +485,6 @@ class TeslaCoT:
     def fetch_and_send_data_for_vehicle(self, vehicle):  # pragma: no cover - infinite supervisor loop
         """Main loop: fetch from the Tesla API and forward to TAK until the process exits."""
         self.consecutive_no_gps_count = 0
-        self.vehicle_woken_once = True  # already woken during initial seeding
         if not self._seed_initial_position(vehicle):
             return
         while True:

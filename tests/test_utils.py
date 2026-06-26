@@ -5,9 +5,6 @@ import math
 import pytest
 from hypothesis import HealthCheck, given, settings, strategies as st
 
-# Robust under mutmut/coverage instrumentation (no deadline; allow class-method
-# property tests to run under different executors across mutation runs).
-_PROP = settings(deadline=None, suppress_health_check=[HealthCheck.differing_executors])
 
 from teslaontarget.utils import (
     calculate_distance,
@@ -17,6 +14,10 @@ from teslaontarget.utils import (
     mph_to_ms,
     celsius_to_fahrenheit,
 )
+
+# Robust under mutmut/coverage instrumentation (no deadline; allow class-method
+# property tests to run under different executors across mutation runs).
+_PROP = settings(deadline=None, suppress_health_check=[HealthCheck.differing_executors])
 
 # ---- coordinates (lat in [-90,90], lon in [-180,180]) ----
 _lats = st.floats(min_value=-89.9, max_value=89.9, allow_nan=False, allow_infinity=False)

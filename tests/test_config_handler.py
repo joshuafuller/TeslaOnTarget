@@ -47,7 +47,7 @@ class TestLoadFromFile:
         assert Config.TESLA_USERNAME == "env@b.com"
 
     def test_env_var_tilde_is_expanded(self, tmp_path, monkeypatch):
-        path = _write_config(tmp_path, 'TESLA_USERNAME = "tilde@b.com"\n')
+        _write_config(tmp_path, 'TESLA_USERNAME = "tilde@b.com"\n')
         monkeypatch.setenv("HOME", str(tmp_path))
         monkeypatch.setenv("TESLAONTARGET_CONFIG", "~/config.py")
         Config.load_from_file()

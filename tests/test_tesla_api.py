@@ -409,19 +409,17 @@ class TestPollOnce:
             cot._poll_once(v)
         assert cot.consecutive_errors == 0 and cot.rate_limit_backoff == 1
 
-    def test_recheck_wake_noop_when_already_woken(self, cot):
+    def test_zero_coordinates_count_as_valid_gps(self, cot):
+        # Regression: lat=0.0 (equator) / lon=0.0 (prime meridian) are valid;
+        # a truthiness check would wrongly treat them as "no GPS".
         v = _fake_vehicle()
-        cot.vehicle_woken_once = True
-        cot._recheck_wake(v)
-        v._owner.vehicle_list.assert_not_called()
-
-    def test_recheck_wake_wakes_asleep_vehicle(self, cot):
-        v = _fake_vehicle()
-        cot.vehicle_woken_once = False
-        v._owner.vehicle_list.return_value = [{"id": 1, "state": "asleep"}]
-        cot._recheck_wake(v)
-        v.sync_wake_up.assert_called_once()
-        assert cot.vehicle_woken_once is True
+        v.get_vehicle_data.return_value = {"drive_state": {"latitude": 0.0, "longitude": 0.0}}
+        cot._handle_valid_gps = MagicMock()
+        cot._handle_missing_gps = MagicMock()
+        with patch("teslaontarget.tesla_api.time.sleep"):
+            cot._poll_once(v)
+        cot._handle_valid_gps.assert_called_once()
+        cot._handle_missing_gps.assert_not_called()
 
 
 class TestHandleGps:
@@ -461,7 +459,8 @@ class TestHandleGps:
 
     def test_missing_gps_thread_alive_skips_start(self, cot, monkeypatch):
         monkeypatch.setattr(Config, "DEAD_RECKONING_ENABLED", True, raising=False)
-        alive = MagicMock(); alive.is_alive.return_value = True
+        alive = MagicMock()
+        alive.is_alive.return_value = True
         cot.dead_reckoning_thread = alive
         cot.send_to_cot = MagicMock()
         cot.last_known_valid_data = {"latitude": 1}
@@ -493,29 +492,7 @@ class TestHandleGps:
             assert cot._seed_initial_position(v) is True  # no save, still proceeds
 
 
-class TestRecheckWakeEdges:
-    def test_vehicle_not_in_list(self, cot):
-        v = _fake_vehicle()
-        cot.vehicle_woken_once = False
-        v._owner.vehicle_list.return_value = [{"id": 99, "state": "asleep"}]
-        cot._recheck_wake(v)
-        v.sync_wake_up.assert_not_called()  # id mismatch -> never matched
-
-    def test_vehicle_online_not_woken(self, cot):
-        v = _fake_vehicle()
-        cot.vehicle_woken_once = False
-        v._owner.vehicle_list.return_value = [{"id": 1, "state": "online"}]
-        cot._recheck_wake(v)
-        v.sync_wake_up.assert_not_called()
-
-    def test_wake_exception_swallowed(self, cot):
-        v = _fake_vehicle()
-        cot.vehicle_woken_once = False
-        v._owner.vehicle_list.return_value = [{"id": 1, "state": "asleep"}]
-        v.sync_wake_up.side_effect = RuntimeError("x")
-        cot._recheck_wake(v)  # must not raise
-        assert cot.vehicle_woken_once is False  # wake failed
-
+class TestPollOnceExtra:
     def test_poll_warns_on_missing_autopilot_while_driving(self, cot):
         v = _fake_vehicle()
         v.get_vehicle_data.return_value = {
