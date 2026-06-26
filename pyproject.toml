@@ -53,6 +53,13 @@ packages = ["teslaontarget"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
+[tool.mutmut]
+# Whole package (mutmut needs the full package importable). Mutation results are
+# only meaningful for modules with a mature test net; survivors in
+# not-yet-covered modules are expected until their coverage lands.
+paths_to_mutate = ["teslaontarget/"]
+tests_dir = ["tests/"]
+
 [tool.coverage.run]
 branch = true
 source = ["teslaontarget"]

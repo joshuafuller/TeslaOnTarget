@@ -2,7 +2,11 @@
 import xml.etree.ElementTree as ET
 
 import pytest
-from hypothesis import given, strategies as st
+from hypothesis import HealthCheck, given, settings, strategies as st
+
+# Robust under mutmut/coverage instrumentation: no deadline, and allow the
+# class-method test to be driven by different executors across mutation runs.
+_PROP = settings(deadline=None, suppress_health_check=[HealthCheck.differing_executors])
 
 from teslaontarget.cot import (
     generate_cot_packet,
@@ -200,6 +204,7 @@ class TestProperties:
         "charging_state": st.sampled_from(["Charging", "Disconnected", "Complete", None]),
     })
 
+    @_PROP
     @given(_data)
     def test_always_emits_parseable_xml(self, data):
         root = ET.fromstring(generate_cot_packet(data))

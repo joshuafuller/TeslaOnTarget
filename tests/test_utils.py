@@ -3,7 +3,11 @@ import json
 import math
 
 import pytest
-from hypothesis import given, strategies as st
+from hypothesis import HealthCheck, given, settings, strategies as st
+
+# Robust under mutmut/coverage instrumentation (no deadline; allow class-method
+# property tests to run under different executors across mutation runs).
+_PROP = settings(deadline=None, suppress_health_check=[HealthCheck.differing_executors])
 
 from teslaontarget.utils import (
     calculate_distance,
@@ -33,11 +37,13 @@ class TestCalculateDistance:
         d = calculate_distance(0.0, 0.0, 0.0, 90.0)
         assert d == pytest.approx(2 * math.pi * 6371e3 / 4, rel=0.001)
 
+    @_PROP
     @given(_lats, _lons, _lats, _lons)
     def test_symmetry(self, a, b, c, d):
         assert calculate_distance(a, b, c, d) == pytest.approx(
             calculate_distance(c, d, a, b), rel=1e-9, abs=1e-6)
 
+    @_PROP
     @given(_lats, _lons, _lats, _lons)
     def test_non_negative_and_bounded(self, a, b, c, d):
         dist = calculate_distance(a, b, c, d)
@@ -45,6 +51,7 @@ class TestCalculateDistance:
         # Can never exceed half the Earth's circumference (antipodal max).
         assert dist <= math.pi * 6371e3 + 1
 
+    @_PROP
     @given(_lats, _lons)
     def test_identity_is_zero(self, lat, lon):
         assert calculate_distance(lat, lon, lat, lon) == pytest.approx(0.0, abs=1e-3)
@@ -55,6 +62,7 @@ class TestUnitConversions:
         assert meters_to_feet(1.0) == pytest.approx(3.28084)
         assert meters_to_feet(0) == 0
 
+    @_PROP
     @given(st.floats(min_value=0, max_value=1e6, allow_nan=False))
     def test_meters_to_feet_scale(self, m):
         assert meters_to_feet(m) == pytest.approx(m * 3.28084)
@@ -66,6 +74,7 @@ class TestUnitConversions:
     def test_mph_to_ms_falsy_returns_zero(self, falsy):
         assert mph_to_ms(falsy) == 0
 
+    @_PROP
     @given(st.floats(min_value=0.001, max_value=1000, allow_nan=False))
     def test_mph_to_ms_positive_is_scaled(self, mph):
         assert mph_to_ms(mph) == pytest.approx(mph * 0.44704)
@@ -78,6 +87,7 @@ class TestUnitConversions:
     def test_celsius_to_fahrenheit_none(self):
         assert celsius_to_fahrenheit(None) is None
 
+    @_PROP
     @given(st.floats(min_value=-273, max_value=1000, allow_nan=False))
     def test_celsius_to_fahrenheit_formula(self, c):
         assert celsius_to_fahrenheit(c) == pytest.approx((c * 9 / 5) + 32)
