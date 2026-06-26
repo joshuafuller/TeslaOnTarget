@@ -27,7 +27,7 @@ Set `ALERT_WEBHOOK_URL` to an [ntfy](https://ntfy.sh) topic or any webhook to be
 
 ## TAK server setup
 
-- Configure a **TCP input** on your chosen port (default `8085`).
+- Configure a **plaintext TCP input** on whatever port your TAK server uses, and point `COT_URL` / `TAK_PORT` at it. (`8085` is just the value used in these examples and in `.env.example` — set it to your own.)
 - Plaintext only — keep TAK traffic on the local network.
 - TAK clients must share the network with (or have routing to) the server.
 

@@ -2,7 +2,7 @@
 
 ## Vehicle not appearing in TAK
 
-1. Check connectivity to the TAK server: `telnet <tak-host> <port>` (default port `8085`).
+1. Check connectivity to the TAK server: `telnet <tak-host> <port>` (use whatever plaintext port your TAK server listens on — `8085` in these examples).
 2. Verify the vehicle is online in the Tesla app.
 3. Check logs: `./teslaontarget.sh logs` (or `./docker-run.sh logs`) — look for `Successfully sent CoT packet`.
 4. Confirm your TAK client is connected to the same server.

@@ -25,7 +25,7 @@ DEAD_RECKONING_DELAY = 1  # Seconds between dead reckoning updates
 LAST_POSITION_FILE = "last_known_position.json"  # Cache file for last position
 
 # Debug Settings
-DEBUG_MODE = True  # Save all Tesla API responses to tesla_api_captures/ directory
+DEBUG_MODE = False  # Set True to save every Tesla API response to tesla_api_captures/ (debugging only)
 
 # Constants (don't change these)
 MPH_TO_MS = 0.44704  # Conversion factor from mph to m/s
