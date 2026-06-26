@@ -64,7 +64,7 @@ sequenceDiagram
 
 **Dead reckoning** smooths the display between the 10-second API polls: while the vehicle moves, the poller projects position forward from the last known point using speed + heading and emits ~1 Hz CoT updates, so the marker glides instead of jumping.
 
-**Resilience** is layered: `tak_client.send_cot` never blocks — on failure it marks itself disconnected, kicks an idempotent background reconnect, and returns. The `health` monitor independently watches the time since the last successful send and escalates: force-reconnect → alert → restart-for-recovery. See [CONFIGURATION.md](CONFIGURATION.md) for the thresholds and `ALERT_WEBHOOK_URL`.
+**Resilience** is layered: `tak_client.send_cot` never loops or waits on a dead server — at most one bounded connection attempt (10s socket timeout), and on failure it marks itself disconnected, kicks an idempotent background reconnect, and returns. The `health` monitor independently watches the time since the last successful send and escalates: force-reconnect → alert → restart-for-recovery. See [CONFIGURATION.md](CONFIGURATION.md) for the thresholds and `ALERT_WEBHOOK_URL`.
 
 ## Release & delivery
 

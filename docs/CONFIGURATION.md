@@ -6,7 +6,7 @@ Settings can be provided as **environment variables** (Docker, via `.env`) or in
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| `COT_URL` | TAK server URL (`tcp://host:port`) | `tcp://<tak-host>:8085` (placeholder) |
+| `COT_URL` | TAK server URL (`tcp://host:port`) | `tcp://YOUR_TAK_SERVER_IP:8085` (placeholder, per `config.py.template`) |
 | `TESLA_USERNAME` | Your Tesla account email | required |
 | `API_LOOP_DELAY` | Seconds between Tesla API calls | `10` |
 | `LAST_POSITION_FILE` | Cache file for position data | `last_known_position.json` |
@@ -19,7 +19,7 @@ Settings can be provided as **environment variables** (Docker, via `.env`) or in
 | `HEALTH_HARD_RESTART_SECONDS` | No-send threshold before exiting for a supervisor restart (0 = auto) | `0` |
 | `HEALTH_FILE` | Path to the health snapshot file | `health.json` |
 
-In Docker, `TAK_SERVER` + `TAK_PORT` are combined into `COT_URL` by the entrypoint.
+In Docker, `TAK_SERVER` + `TAK_PORT` are combined into `COT_URL` by the entrypoint, which also writes container paths regardless of the values above: `LAST_POSITION_FILE=/data/last_known_position.json` and `HEALTH_FILE=/logs/health.json`.
 
 ## Failure alerting
 

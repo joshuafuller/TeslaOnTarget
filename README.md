@@ -60,7 +60,7 @@ docker run -d --env-file .env -v tesla_data:/data -v tesla_logs:/logs \
   --name teslaontarget --restart unless-stopped ghcr.io/joshuafuller/teslaontarget
 ```
 
-Prefer a non-Docker install? `uv sync`, copy `config.py.template` → `config.py`, run `python -m teslaontarget.auth`, then `./teslaontarget.sh start`. Full guides below.
+Prefer a non-Docker install? `uv sync`, copy `config.py.template` → `config.py`, run `uv run python -m teslaontarget.auth`, then `./teslaontarget.sh start`. Full guides below.
 
 ## Requirements
 
