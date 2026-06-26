@@ -61,8 +61,8 @@ MUTATIONS = [
      "tests/test_cot.py", "cot: security guard inverted"),
 
     # ---- config_handler.py ----
-    ("teslaontarget/config_handler.py", "if not cls.TESLA_USERNAME:",
-     "if cls.TESLA_USERNAME:",
+    ("teslaontarget/config_handler.py", "if not self.tesla_username:",
+     "if self.tesla_username:",
      "tests/test_config_handler.py", "config: username validation inverted"),
     ("teslaontarget/config_handler.py", "if os.path.isfile(env_path):",
      "if not os.path.isfile(env_path):",

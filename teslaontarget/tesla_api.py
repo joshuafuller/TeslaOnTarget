@@ -7,7 +7,6 @@ from collections import deque
 from datetime import datetime
 from math import cos, degrees, radians, sin
 
-from .config_handler import Config
 from .constants import EARTH_RADIUS_M, MPH_TO_MS
 from .cot import format_cot_for_tak, generate_cot_packet
 from .tak_client import TAKClient
@@ -26,11 +25,9 @@ _RATE_LIMIT_MARKERS = ('429', 'rate limit', 'too many requests', 'timeout')
 
 
 class TeslaCoT:
-    def __init__(self, vehicle_id=None, tak_client=None):
-        # Load configuration
-        Config.load_from_file()
-        self.config = Config
-        
+    def __init__(self, config, vehicle_id=None, tak_client=None):
+        self.config = config
+
         # Vehicle-specific attributes
         self.vehicle_id = vehicle_id
         self.position_file = self._get_position_filename()
@@ -39,22 +36,21 @@ class TeslaCoT:
         self.vehicle_uids = {}
         self.dead_reckoning_thread = None
         self.stop_dead_reckoning = threading.Event()
-        
+
         # Use shared TAK client if provided, otherwise create new one
-        self.tak_client = tak_client if tak_client else TAKClient(self.config.COT_URL)
+        self.tak_client = tak_client if tak_client else TAKClient(config.cot_url)
         self.tesla = None
         self.vehicle = None
-        
+
         # Rate limiting tracking
         self.rate_limit_backoff = 1  # Multiplier for delays
         self.consecutive_errors = 0
         self.max_wake_attempts = 3
         # Loop state (promoted from a local so the loop body is testable)
         self.consecutive_no_gps_count = 0
-        
-        # Debug mode - captures all Tesla API responses
-        # Opt-in: debug capture writes every API response to disk, so default off.
-        self.debug_mode = getattr(self.config, 'DEBUG_MODE', False)
+
+        # Debug mode - captures all Tesla API responses (opt-in; off by default).
+        self.debug_mode = config.debug_mode
         self.debug_dir = "tesla_api_captures"
         self.capture_count = 0
         if self.debug_mode:
@@ -68,7 +64,7 @@ class TeslaCoT:
             # Create safe filename from vehicle ID
             safe_id = "".join(c for c in str(self.vehicle_id) if c.isalnum() or c in '-_')
             return f"last_position_{safe_id}.json"
-        return self.config.LAST_POSITION_FILE
+        return self.config.last_position_file
     
     def read_last_position_from_file(self):
         """Read the last known position from file."""
@@ -128,7 +124,7 @@ class TeslaCoT:
     def dead_reckoning_update(self, initial_data):
         """Perform dead reckoning interpolation between Tesla API updates."""
         start_time = time.time()
-        max_duration = self.config.API_LOOP_DELAY - 1  # Run for slightly less than API interval
+        max_duration = self.config.api_loop_delay - 1  # Run for slightly less than API interval
         
         # Keep track of current position
         current_lat = initial_data.get('latitude')
@@ -141,7 +137,7 @@ class TeslaCoT:
             # 0.0 is a valid coordinate (equator / prime meridian) -- check presence.
             if current_lat is not None and current_lon is not None:
                 # Wait for the next update interval
-                time.sleep(self.config.DEAD_RECKONING_DELAY)
+                time.sleep(self.config.dead_reckoning_delay)
                 
                 # Calculate new position based on speed and heading
                 speed = initial_data.get('speed', 0)
@@ -174,7 +170,7 @@ class TeslaCoT:
                 heading_rad = radians(heading)
                 
                 # Calculate distance traveled in one update cycle
-                distance = speed_ms * self.config.DEAD_RECKONING_DELAY
+                distance = speed_ms * self.config.dead_reckoning_delay
                 
                 # Calculate new position from current position
                 lat_rad = radians(current_lat)
@@ -273,7 +269,7 @@ class TeslaCoT:
         if kind == "rate_limit":
             self.consecutive_errors += 1
             self.rate_limit_backoff = min(self.rate_limit_backoff * 2, 32)
-            delay = self.config.API_LOOP_DELAY * self.rate_limit_backoff
+            delay = self.config.api_loop_delay * self.rate_limit_backoff
             logger.warning(f"Rate limit detected! Backing off to {delay}s delay (error #{self.consecutive_errors})")
             logger.warning(f"Error details: {exc}")
             if self.last_known_valid_data:
@@ -285,16 +281,16 @@ class TeslaCoT:
                 self.send_to_cot(self.last_known_valid_data)
             else:
                 logger.warning("No last known position available")
-            return self.config.API_LOOP_DELAY
+            return self.config.api_loop_delay
         # other
         self.consecutive_errors += 1
         logger.error(f"API error (#{self.consecutive_errors}): {exc}")
         if self.consecutive_errors >= 3:
             self.rate_limit_backoff = min(self.rate_limit_backoff * 1.5, 16)
-            delay = self.config.API_LOOP_DELAY * self.rate_limit_backoff
+            delay = self.config.api_loop_delay * self.rate_limit_backoff
             logger.warning(f"Multiple API errors detected. Backing off to {delay}s delay")
             return delay
-        return self.config.API_LOOP_DELAY
+        return self.config.api_loop_delay
 
     def _start_dead_reckoning(self, data):
         """(Re)start the dead-reckoning thread for the given position, if moving."""
@@ -319,14 +315,14 @@ class TeslaCoT:
         self.last_known_valid_data = relevant_data.copy()
         self.save_last_position_to_file(self.last_known_valid_data)
         self.send_to_cot(relevant_data)
-        if getattr(self.config, 'DEAD_RECKONING_ENABLED', False):
+        if self.config.dead_reckoning_enabled:
             self._start_dead_reckoning(relevant_data.copy())
 
     def _handle_missing_gps(self):
         """No fresh GPS: keep interpolating / resend the last known position."""
         logger.warning("No valid GPS coordinates from Tesla API")
         if not (self.dead_reckoning_thread and self.dead_reckoning_thread.is_alive()):
-            if getattr(self.config, 'DEAD_RECKONING_ENABLED', False):
+            if self.config.dead_reckoning_enabled:
                 if self.last_known_valid_data and self.last_known_valid_data.get('speed', 0):
                     logger.info("No GPS - starting dead reckoning based on last known position")
                     self.stop_dead_reckoning.clear()
@@ -361,7 +357,7 @@ class TeslaCoT:
         relevant_data = map_vehicle_data(vehicle_data, vehicle)
         speed = relevant_data.get('speed', 0)
         speed_display = f"{speed}mph" if speed is not None else "0mph"
-        dr_status = "ENABLED" if getattr(self.config, 'DEAD_RECKONING_ENABLED', False) else "DISABLED"
+        dr_status = "ENABLED" if self.config.dead_reckoning_enabled else "DISABLED"
         ap_state = relevant_data.get('autopilot_state')
         if ap_state is None and relevant_data.get('shift_state') in ['D', 'R']:
             logger.warning("autopilot_state field not available in Tesla API response - FSD detection may not work")
@@ -372,7 +368,7 @@ class TeslaCoT:
         else:
             self._handle_missing_gps()
 
-        time.sleep(self.config.API_LOOP_DELAY)
+        time.sleep(self.config.api_loop_delay)
 
     def fetch_and_send_data_for_vehicle(self, vehicle):  # pragma: no cover - infinite supervisor loop
         """Main loop: fetch from the Tesla API and forward to TAK until the process exits."""
@@ -384,4 +380,4 @@ class TeslaCoT:
                 self._poll_once(vehicle)
             except Exception as e:
                 logger.error(f"Error fetching vehicle data: {e}")
-                time.sleep(self.config.API_LOOP_DELAY)
+                time.sleep(self.config.api_loop_delay)

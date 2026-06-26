@@ -1,27 +1,10 @@
-"""Tests for teslaontarget.config_handler.Config (config loading + validation)."""
+"""Tests for teslaontarget.config_handler (AppConfig + load_config)."""
+import dataclasses
 import importlib.util
 
 import pytest
 
-from teslaontarget.config_handler import Config
-
-_DEFAULTS = {
-    "COT_URL": Config.COT_URL,
-    "API_LOOP_DELAY": Config.API_LOOP_DELAY,
-    "DEAD_RECKONING_DELAY": Config.DEAD_RECKONING_DELAY,
-    "TESLA_USERNAME": Config.TESLA_USERNAME,
-    "LAST_POSITION_FILE": Config.LAST_POSITION_FILE,
-}
-
-
-@pytest.fixture(autouse=True)
-def reset_config(monkeypatch):
-    monkeypatch.delenv("TESLAONTARGET_CONFIG", raising=False)
-    for k, v in _DEFAULTS.items():
-        setattr(Config, k, v)
-    yield
-    for k, v in _DEFAULTS.items():
-        setattr(Config, k, v)
+from teslaontarget.config_handler import AppConfig, load_config
 
 
 def _write_config(tmp_path, body, name="config.py"):
@@ -30,56 +13,86 @@ def _write_config(tmp_path, body, name="config.py"):
     return str(p)
 
 
-class TestLoadFromFile:
-    def test_explicit_path_loads_public_attrs(self, tmp_path):
-        path = _write_config(tmp_path, 'TESLA_USERNAME = "a@b.com"\nCOT_URL = "tcp://h:1"\n_PRIVATE = 9\n')
-        Config.load_from_file(path)
-        assert Config.TESLA_USERNAME == "a@b.com"
-        assert Config.COT_URL == "tcp://h:1"
-        assert not hasattr(Config, "_PRIVATE")  # underscore names are skipped
+@pytest.fixture(autouse=True)
+def _no_env(monkeypatch):
+    monkeypatch.delenv("TESLAONTARGET_CONFIG", raising=False)
 
-    def test_env_var_path_is_used(self, tmp_path, monkeypatch):
+
+class TestAppConfig:
+    def test_defaults(self):
+        c = AppConfig()
+        assert c.tesla_username is None
+        assert c.api_loop_delay == 10
+        assert c.debug_mode is False
+        assert c.vehicle_filter == ()
+
+    def test_is_immutable(self):
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            AppConfig().api_loop_delay = 5
+
+    def test_validate_ok(self):
+        assert AppConfig(tesla_username="a@b.com", cot_url="tcp://h:1").validate() is True
+
+    def test_validate_missing_username(self):
+        assert AppConfig(tesla_username=None, cot_url="tcp://h:1").validate() is False
+
+    def test_validate_missing_cot_url(self):
+        assert AppConfig(tesla_username="a@b.com", cot_url="").validate() is False
+
+
+class TestLoadConfig:
+    def test_explicit_path_maps_upper_to_fields(self, tmp_path):
+        path = _write_config(
+            tmp_path,
+            'COT_URL = "tcp://x:1"\nTESLA_USERNAME = "a@b.com"\nAPI_LOOP_DELAY = 30\n'
+            'DEBUG_MODE = True\n')
+        c = load_config(path)
+        assert c.cot_url == "tcp://x:1"
+        assert c.tesla_username == "a@b.com"
+        assert c.api_loop_delay == 30
+        assert c.debug_mode is True
+
+    def test_unknown_keys_ignored(self, tmp_path):
+        path = _write_config(tmp_path, 'TESLA_USERNAME = "a@b.com"\nSOMETHING_ELSE = 9\n_PRIV = 1\n')
+        c = load_config(path)
+        assert c.tesla_username == "a@b.com"
+        assert not hasattr(c, "something_else")
+
+    def test_vehicle_filter_list_becomes_tuple(self, tmp_path):
+        path = _write_config(tmp_path, 'VEHICLE_FILTER = ["Tron", "Other"]\n')
+        assert load_config(path).vehicle_filter == ("Tron", "Other")
+
+    def test_env_var_path(self, tmp_path, monkeypatch):
         path = _write_config(tmp_path, 'TESLA_USERNAME = "env@b.com"\n')
         monkeypatch.setenv("TESLAONTARGET_CONFIG", path)
-        Config.load_from_file()
-        assert Config.TESLA_USERNAME == "env@b.com"
+        assert load_config().tesla_username == "env@b.com"
 
-    def test_env_var_tilde_is_expanded(self, tmp_path, monkeypatch):
+    def test_env_var_tilde_expanded(self, tmp_path, monkeypatch):
         _write_config(tmp_path, 'TESLA_USERNAME = "tilde@b.com"\n')
         monkeypatch.setenv("HOME", str(tmp_path))
         monkeypatch.setenv("TESLAONTARGET_CONFIG", "~/config.py")
-        Config.load_from_file()
-        assert Config.TESLA_USERNAME == "tilde@b.com"
+        assert load_config().tesla_username == "tilde@b.com"
 
-    def test_env_var_pointing_at_directory_falls_back(self, tmp_path, monkeypatch):
-        # A directory is not a file -> env var ignored -> falls through to the
-        # package-adjacent path (which doesn't exist in tests) -> defaults kept.
+    def test_env_var_directory_falls_back_to_defaults(self, tmp_path, monkeypatch):
         monkeypatch.setenv("TESLAONTARGET_CONFIG", str(tmp_path))
-        Config.load_from_file()
-        assert Config.TESLA_USERNAME is None
+        assert load_config().tesla_username is None
 
-    def test_missing_explicit_path_keeps_defaults(self, tmp_path):
-        Config.load_from_file(str(tmp_path / "absent.py"))
-        assert Config.TESLA_USERNAME is None
+    def test_missing_file_returns_defaults(self, tmp_path):
+        assert load_config(str(tmp_path / "absent.py")).tesla_username is None
 
-    def test_no_path_and_no_env_uses_package_fallback(self):
-        # config_path None and TESLAONTARGET_CONFIG unset (fixture) -> falls
-        # through to the package-adjacent config.py (absent in tests).
-        Config.load_from_file()
-        assert Config.TESLA_USERNAME is None
+    def test_no_path_no_env_uses_package_fallback(self):
+        assert load_config().tesla_username is None  # package-adjacent config absent in tests
 
-    def test_syntax_error_in_config_is_caught(self, tmp_path):
+    def test_syntax_error_returns_defaults(self, tmp_path):
         path = _write_config(tmp_path, "this is not valid python =\n")
-        Config.load_from_file(path)  # must not raise
-        assert Config.TESLA_USERNAME is None
+        assert load_config(path).tesla_username is None
 
-    def test_none_spec_is_guarded(self, tmp_path, monkeypatch):
+    def test_none_spec_returns_defaults(self, tmp_path, monkeypatch):
         path = _write_config(tmp_path, 'TESLA_USERNAME = "x@y.com"\n')
         monkeypatch.setattr(importlib.util, "spec_from_file_location", lambda *a, **k: None)
-        Config.load_from_file(path)  # guarded, must not raise
-        assert Config.TESLA_USERNAME is None
+        assert load_config(path).tesla_username is None
 
-    def test_none_loader_is_guarded(self, tmp_path, monkeypatch):
+    def test_none_loader_returns_defaults(self, tmp_path, monkeypatch):
         path = _write_config(tmp_path, 'TESLA_USERNAME = "x@y.com"\n')
 
         class _SpecNoLoader:
@@ -87,22 +100,4 @@ class TestLoadFromFile:
 
         monkeypatch.setattr(importlib.util, "spec_from_file_location",
                             lambda *a, **k: _SpecNoLoader())
-        Config.load_from_file(path)
-        assert Config.TESLA_USERNAME is None
-
-
-class TestValidate:
-    def test_valid_when_username_and_cot_url_set(self):
-        Config.TESLA_USERNAME = "a@b.com"
-        Config.COT_URL = "tcp://h:1"
-        assert Config.validate() is True
-
-    def test_invalid_without_username(self):
-        Config.TESLA_USERNAME = None
-        Config.COT_URL = "tcp://h:1"
-        assert Config.validate() is False
-
-    def test_invalid_without_cot_url(self):
-        Config.TESLA_USERNAME = "a@b.com"
-        Config.COT_URL = ""
-        assert Config.validate() is False
+        assert load_config(path).tesla_username is None

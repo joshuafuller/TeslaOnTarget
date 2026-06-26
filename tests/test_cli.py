@@ -1,11 +1,10 @@
 """Tests for teslaontarget.cli (entry point, fully mocked)."""
 import logging
-from unittest.mock import MagicMock, patch
+from unittest.mock import DEFAULT, MagicMock, patch
 
 import pytest
 
 from teslaontarget import cli
-from teslaontarget.config_handler import Config
 
 
 def test_main_module_is_importable():
@@ -13,6 +12,14 @@ def test_main_module_is_importable():
     # __name__ != "__main__" here, so main() is not invoked, only the import runs.
     import teslaontarget.__main__ as entry
     assert entry.main is not None
+
+
+def _vmock(state):
+    data = {"state": state, "display_name": "Car"}
+    m = MagicMock()
+    m.get.side_effect = data.get
+    m.__getitem__ = lambda s, k: data[k]
+    return m
 
 
 class TestSignalHandler:
@@ -49,73 +56,63 @@ class TestParseAndConfig:
             args = cli._parse_args()
         assert args.debug is True and args.config == "/x/config.py"
 
-    def test_load_valid_config(self, monkeypatch):
-        monkeypatch.setattr(Config, "load_from_file", MagicMock())
-        monkeypatch.setattr(Config, "validate", MagicMock(return_value=True))
-        cli._load_and_validate_config(MagicMock(debug=False))
+    def test_load_valid_config_returns_it(self, make_config):
+        cfg = make_config()
+        with patch("teslaontarget.cli.load_config", return_value=cfg):
+            assert cli._load_and_validate_config(MagicMock(debug=False)) is cfg
 
-    def test_debug_flag_sets_level(self, monkeypatch):
-        monkeypatch.setattr(Config, "load_from_file", MagicMock())
-        monkeypatch.setattr(Config, "validate", MagicMock(return_value=True))
-        cli._load_and_validate_config(MagicMock(debug=True))
+    def test_debug_flag_sets_level(self, make_config):
+        with patch("teslaontarget.cli.load_config", return_value=make_config()):
+            cli._load_and_validate_config(MagicMock(debug=True))
         assert logging.getLogger().level == logging.DEBUG
 
-    def test_invalid_config_exits(self, monkeypatch):
-        monkeypatch.setattr(Config, "load_from_file", MagicMock())
-        monkeypatch.setattr(Config, "validate", MagicMock(return_value=False))
-        with pytest.raises(SystemExit):
-            cli._load_and_validate_config(MagicMock(debug=False))
+    def test_invalid_config_exits(self, make_config):
+        bad = make_config(tesla_username=None)  # validate() -> False
+        with patch("teslaontarget.cli.load_config", return_value=bad):
+            with pytest.raises(SystemExit):
+                cli._load_and_validate_config(MagicMock(debug=False))
 
 
 class TestSelectVehicles:
-    def test_no_vehicles_exits(self, monkeypatch):
-        monkeypatch.setattr(Config, "VEHICLE_FILTER", [], raising=False)
+    def test_no_vehicles_exits(self, make_config):
         tesla = MagicMock()
         tesla.vehicle_list.return_value = []
         with pytest.raises(SystemExit):
-            cli._select_vehicles(tesla)
+            cli._select_vehicles(tesla, make_config())
 
-    def test_no_filter_returns_all(self, monkeypatch):
-        monkeypatch.setattr(Config, "VEHICLE_FILTER", [], raising=False)
+    def test_no_filter_returns_all(self, make_config):
         tesla = MagicMock()
         tesla.vehicle_list.return_value = [{"display_name": "A"}, {"display_name": "B"}]
-        assert len(cli._select_vehicles(tesla)) == 2
+        assert len(cli._select_vehicles(tesla, make_config())) == 2
 
-    def test_filter_matches_subset(self, monkeypatch):
-        monkeypatch.setattr(Config, "VEHICLE_FILTER", ["Tron"], raising=False)
+    def test_filter_matches_subset(self, make_config):
         tesla = MagicMock()
         tesla.vehicle_list.return_value = [
             {"display_name": "Tron", "vin": "1"}, {"display_name": "Other", "vin": "2"}]
-        result = cli._select_vehicles(tesla)
+        result = cli._select_vehicles(tesla, make_config(vehicle_filter=("Tron",)))
         assert len(result) == 1 and result[0]["display_name"] == "Tron"
 
-    def test_filter_no_match_exits(self, monkeypatch):
-        monkeypatch.setattr(Config, "VEHICLE_FILTER", ["Nope"], raising=False)
+    def test_filter_no_match_exits(self, make_config):
         tesla = MagicMock()
         tesla.vehicle_list.return_value = [{"display_name": "Tron", "vin": "1"}]
         with pytest.raises(SystemExit):
-            cli._select_vehicles(tesla)
+            cli._select_vehicles(tesla, make_config(vehicle_filter=("Nope",)))
 
 
 class TestBuildHealthMonitor:
-    def test_uses_defaults_when_unset(self, monkeypatch):
-        for attr in ("HEALTH_NO_SEND_SECONDS", "HEALTH_CHECK_INTERVAL", "HEALTH_HARD_RESTART_SECONDS"):
-            monkeypatch.setattr(Config, attr, 0, raising=False)
-        monkeypatch.setattr(Config, "API_LOOP_DELAY", 10, raising=False)
+    def test_uses_defaults_when_unset(self, make_config):
         with patch("teslaontarget.cli.HealthMonitor") as HM:
-            cli._build_health_monitor(MagicMock())
+            cli._build_health_monitor(MagicMock(), make_config(api_loop_delay=10))
         kw = HM.call_args.kwargs
         assert kw["max_no_send_seconds"] == 120  # max(120, 10*8)
         assert kw["check_interval"] == 15
         assert kw["hard_restart_seconds"] == 600
 
-    def test_uses_configured_values(self, monkeypatch):
-        monkeypatch.setattr(Config, "HEALTH_NO_SEND_SECONDS", 300, raising=False)
-        monkeypatch.setattr(Config, "HEALTH_CHECK_INTERVAL", 30, raising=False)
-        monkeypatch.setattr(Config, "HEALTH_HARD_RESTART_SECONDS", 999, raising=False)
-        monkeypatch.setattr(Config, "API_LOOP_DELAY", 10, raising=False)
+    def test_uses_configured_values(self, make_config):
+        cfg = make_config(api_loop_delay=10, health_no_send_seconds=300,
+                          health_check_interval=30, health_hard_restart_seconds=999)
         with patch("teslaontarget.cli.HealthMonitor") as HM:
-            cli._build_health_monitor(MagicMock())
+            cli._build_health_monitor(MagicMock(), cfg)
         kw = HM.call_args.kwargs
         assert kw["max_no_send_seconds"] == 300 and kw["hard_restart_seconds"] == 999
 
@@ -134,30 +131,20 @@ class TestWakeVehicles:
         cli._wake_vehicles([a])  # must not raise
 
 
-def _vmock(state):
-    data = {"state": state, "display_name": "Car"}
-    m = MagicMock()
-    m.get.side_effect = data.get
-    m.__getitem__ = lambda s, k: data[k]
-    return m
-
-
 class TestStartTracking:
-    def test_spawns_one_thread_per_vehicle(self, monkeypatch):
-        monkeypatch.setattr(Config, "COT_URL", "tcp://h:1", raising=False)
+    def test_spawns_one_thread_per_vehicle(self, make_config):
         v = _vmock("online")
         v.get.side_effect = {"vin": "VIN1", "display_name": "Car", "state": "online"}.get
         with patch("teslaontarget.cli.TeslaCoT"), \
              patch("teslaontarget.cli.threading.Thread") as T:
-            threads = cli._start_tracking_threads([v], MagicMock())
+            threads = cli._start_tracking_threads([v], MagicMock(), make_config())
         assert len(threads) == 1
         T.return_value.start.assert_called_once()
 
 
 class TestMonitorThreads:
-    def test_runs_one_pass_then_stops(self, monkeypatch):
+    def test_runs_one_pass_then_stops(self, monkeypatch, make_config):
         monkeypatch.setattr(cli, "running", True)
-        monkeypatch.setattr(Config, "API_LOOP_DELAY", 10, raising=False)
         t_alive = MagicMock()
         t_alive.is_alive.return_value = True
         t_dead = MagicMock()
@@ -166,12 +153,11 @@ class TestMonitorThreads:
         def stop(_):
             cli.running = False
         with patch("teslaontarget.cli.time.sleep", side_effect=stop):
-            cli._monitor_threads([t_alive, t_dead])  # alive_count 1 < 2 -> warning
+            cli._monitor_threads([t_alive, t_dead], make_config())  # 1 < 2 -> warning
         assert cli.running is False
 
-    def test_all_alive_no_warning(self, monkeypatch):
+    def test_all_alive_no_warning(self, monkeypatch, make_config):
         monkeypatch.setattr(cli, "running", True)
-        monkeypatch.setattr(Config, "API_LOOP_DELAY", 10, raising=False)
         t1 = MagicMock()
         t1.is_alive.return_value = True
         t2 = MagicMock()
@@ -180,13 +166,12 @@ class TestMonitorThreads:
         def stop(_):
             cli.running = False
         with patch("teslaontarget.cli.time.sleep", side_effect=stop):
-            cli._monitor_threads([t1, t2])  # alive_count 2 == 2 -> no warning branch
+            cli._monitor_threads([t1, t2], make_config())  # 2 == 2 -> no warning
         assert cli.running is False
 
 
 class TestMain:
     def _patch_all(self):
-        from unittest.mock import DEFAULT
         return patch.multiple(
             "teslaontarget.cli",
             _parse_args=DEFAULT, _load_and_validate_config=DEFAULT, Tesla=DEFAULT,

@@ -1,22 +1,17 @@
 """Tests for teslaontarget.tesla_api.TeslaCoT (non-loop methods)."""
+import dataclasses
 import json
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from teslaontarget.config_handler import Config
 from teslaontarget.tesla_api import TeslaCoT
 
 
 @pytest.fixture
-def cot(tmp_path, monkeypatch):
+def cot(tmp_path, monkeypatch, make_config):
     monkeypatch.chdir(tmp_path)  # isolate all file writes to a temp cwd
-    monkeypatch.setattr(Config, "COT_URL", "tcp://h:1", raising=False)
-    monkeypatch.setattr(Config, "DEBUG_MODE", False, raising=False)
-    monkeypatch.setattr(Config, "LAST_POSITION_FILE", "last.json", raising=False)
-    monkeypatch.setattr(Config, "API_LOOP_DELAY", 10, raising=False)
-    monkeypatch.setattr(Config, "DEAD_RECKONING_DELAY", 1, raising=False)
-    return TeslaCoT(vehicle_id="VIN123", tak_client=MagicMock())
+    return TeslaCoT(make_config(), vehicle_id="VIN123", tak_client=MagicMock())
 
 
 class TestInit:
@@ -25,25 +20,20 @@ class TestInit:
         assert cot.positions_queue.maxlen == 2
         assert cot.debug_mode is False
 
-    def test_creates_tak_client_when_none(self, tmp_path, monkeypatch):
+    def test_creates_tak_client_when_none(self, tmp_path, monkeypatch, make_config):
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setattr(Config, "COT_URL", "tcp://1.2.3.4:9", raising=False)
-        monkeypatch.setattr(Config, "DEBUG_MODE", False, raising=False)
         with patch("teslaontarget.tesla_api.TAKClient") as TC:
-            TeslaCoT(vehicle_id="v")
+            TeslaCoT(make_config(cot_url="tcp://1.2.3.4:9"))
             TC.assert_called_once_with("tcp://1.2.3.4:9")
 
-    def test_debug_mode_makes_capture_dir(self, tmp_path, monkeypatch):
+    def test_debug_mode_makes_capture_dir(self, tmp_path, monkeypatch, make_config):
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setattr(Config, "DEBUG_MODE", True, raising=False)
-        TeslaCoT(vehicle_id="v", tak_client=MagicMock())
+        TeslaCoT(make_config(debug_mode=True), vehicle_id="v", tak_client=MagicMock())
         assert (tmp_path / "tesla_api_captures").is_dir()
 
-    def test_debug_mode_without_vehicle_id(self, tmp_path, monkeypatch):
+    def test_debug_mode_without_vehicle_id(self, tmp_path, monkeypatch, make_config):
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setattr(Config, "DEBUG_MODE", True, raising=False)
-        monkeypatch.setattr(Config, "LAST_POSITION_FILE", "last.json", raising=False)
-        TeslaCoT(vehicle_id=None, tak_client=MagicMock())  # debug on, no id -> no log
+        TeslaCoT(make_config(debug_mode=True), vehicle_id=None, tak_client=MagicMock())
         assert (tmp_path / "tesla_api_captures").is_dir()
 
 
@@ -197,14 +187,14 @@ class TestHandleApiError:
         cot.last_known_valid_data = {"latitude": 1}
         delay = cot._handle_api_error(Exception("429 rate limit"))
         assert cot.rate_limit_backoff == 2
-        assert delay == cot.config.API_LOOP_DELAY * 2
+        assert delay == cot.config.api_loop_delay * 2
         cot.send_to_cot.assert_called_once()
 
     def test_unavailable_uses_cache(self, cot):
         cot.send_to_cot = MagicMock()
         cot.last_known_valid_data = {"latitude": 1}
         delay = cot._handle_api_error(Exception("vehicle unavailable"))
-        assert delay == cot.config.API_LOOP_DELAY
+        assert delay == cot.config.api_loop_delay
         cot.send_to_cot.assert_called_once()
 
     def test_unavailable_without_cache_warns(self, cot):
@@ -215,14 +205,14 @@ class TestHandleApiError:
 
     def test_other_error_single(self, cot):
         delay = cot._handle_api_error(Exception("weird"))
-        assert delay == cot.config.API_LOOP_DELAY
+        assert delay == cot.config.api_loop_delay
         assert cot.consecutive_errors == 1
 
     def test_other_error_escalates_after_three(self, cot):
         cot.consecutive_errors = 2
         delay = cot._handle_api_error(Exception("weird"))
         assert cot.consecutive_errors == 3
-        assert delay > cot.config.API_LOOP_DELAY
+        assert delay > cot.config.api_loop_delay
 
 
 class TestSeedAndWake:
@@ -356,7 +346,7 @@ class TestPollOnce:
 
 class TestHandleGps:
     def test_valid_gps_saves_sends_and_dr(self, cot, monkeypatch):
-        monkeypatch.setattr(Config, "DEAD_RECKONING_ENABLED", True, raising=False)
+        cot.config = dataclasses.replace(cot.config, dead_reckoning_enabled=True)
         cot.send_to_cot = MagicMock()
         cot._start_dead_reckoning = MagicMock()
         cot._handle_valid_gps({"latitude": 1, "longitude": 2, "speed": 9})
@@ -365,7 +355,7 @@ class TestHandleGps:
         cot._start_dead_reckoning.assert_called_once()
 
     def test_missing_gps_resends_cache(self, cot, monkeypatch):
-        monkeypatch.setattr(Config, "DEAD_RECKONING_ENABLED", False, raising=False)
+        cot.config = dataclasses.replace(cot.config, dead_reckoning_enabled=False)
         cot.dead_reckoning_thread = None
         cot.send_to_cot = MagicMock()
         cot.last_known_valid_data = {"latitude": 1}
@@ -374,7 +364,7 @@ class TestHandleGps:
         cot.send_to_cot.assert_called_once()
 
     def test_missing_gps_starts_dr_from_cache(self, cot, monkeypatch):
-        monkeypatch.setattr(Config, "DEAD_RECKONING_ENABLED", True, raising=False)
+        cot.config = dataclasses.replace(cot.config, dead_reckoning_enabled=True)
         cot.dead_reckoning_thread = None
         cot.send_to_cot = MagicMock()
         cot.last_known_valid_data = {"latitude": 1, "speed": 20}
@@ -383,14 +373,14 @@ class TestHandleGps:
             T.return_value.start.assert_called_once()
 
     def test_valid_gps_with_dr_disabled(self, cot, monkeypatch):
-        monkeypatch.setattr(Config, "DEAD_RECKONING_ENABLED", False, raising=False)
+        cot.config = dataclasses.replace(cot.config, dead_reckoning_enabled=False)
         cot.send_to_cot = MagicMock()
         cot._start_dead_reckoning = MagicMock()
         cot._handle_valid_gps({"latitude": 1, "longitude": 2})
         cot._start_dead_reckoning.assert_not_called()
 
     def test_missing_gps_thread_alive_skips_start(self, cot, monkeypatch):
-        monkeypatch.setattr(Config, "DEAD_RECKONING_ENABLED", True, raising=False)
+        cot.config = dataclasses.replace(cot.config, dead_reckoning_enabled=True)
         alive = MagicMock()
         alive.is_alive.return_value = True
         cot.dead_reckoning_thread = alive
@@ -402,7 +392,7 @@ class TestHandleGps:
         cot.send_to_cot.assert_called_once()
 
     def test_missing_gps_dr_enabled_but_no_speed(self, cot, monkeypatch):
-        monkeypatch.setattr(Config, "DEAD_RECKONING_ENABLED", True, raising=False)
+        cot.config = dataclasses.replace(cot.config, dead_reckoning_enabled=True)
         cot.dead_reckoning_thread = None
         cot.send_to_cot = MagicMock()
         cot.last_known_valid_data = {"latitude": 1, "speed": 0}  # not moving
@@ -411,7 +401,7 @@ class TestHandleGps:
             T.assert_not_called()
 
     def test_missing_gps_no_cache_no_send(self, cot, monkeypatch):
-        monkeypatch.setattr(Config, "DEAD_RECKONING_ENABLED", False, raising=False)
+        cot.config = dataclasses.replace(cot.config, dead_reckoning_enabled=False)
         cot.dead_reckoning_thread = None
         cot.send_to_cot = MagicMock()
         cot.last_known_valid_data = None

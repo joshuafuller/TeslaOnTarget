@@ -8,7 +8,7 @@ from teslaontarget import auth
 
 @pytest.fixture
 def tesla():
-    with patch("teslaontarget.auth.Tesla") as T, patch("teslaontarget.auth.Config"):
+    with patch("teslaontarget.auth.Tesla") as T, patch("teslaontarget.auth.load_config"):
         yield T.return_value
 
 
