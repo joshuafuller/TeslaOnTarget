@@ -162,6 +162,16 @@ def _monitor_threads(threads, config):
         time.sleep(5)
 
 
+def _stop_health(health):
+    """Stop the health monitor if one was started (best-effort)."""
+    if health is None:
+        return
+    try:
+        health.stop()
+    except Exception:
+        pass
+
+
 def main():
     """Main entry point for TeslaOnTarget."""
     args = _parse_args()
@@ -191,11 +201,7 @@ def main():
         sys.exit(1)
     finally:
         logger.info("TeslaOnTarget stopped")
-        try:
-            if health:
-                health.stop()
-        except Exception:
-            pass
+        _stop_health(health)
 
 
 if __name__ == '__main__':
