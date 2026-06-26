@@ -86,6 +86,20 @@ MUTATIONS = [
     ("teslaontarget/health.py", "self.hard_restart_seconds = hard_restart_seconds or (max_no_send_seconds * 5)",
      "self.hard_restart_seconds = hard_restart_seconds or (max_no_send_seconds * 4)",
      "tests/test_health.py", "health: hard-restart default *5 -> *4"),
+
+    # ---- tesla_api.py ----
+    ("teslaontarget/tesla_api.py", "self.rate_limit_backoff = min(self.rate_limit_backoff * 2, 32)",
+     "self.rate_limit_backoff = min(self.rate_limit_backoff * 1, 32)",
+     "tests/test_tesla_api.py", "tesla: rate-limit backoff *2 -> *1"),
+    ("teslaontarget/tesla_api.py", "if self.consecutive_errors >= 3:",
+     "if self.consecutive_errors > 3:",
+     "tests/test_tesla_api.py", "tesla: error escalation >=3 -> >3"),
+    ('teslaontarget/tesla_api.py', 'if "vehicle unavailable" in error_str or "asleep" in error_str:',
+     'if "vehicle unavailable" in error_str and "asleep" in error_str:',
+     "tests/test_tesla_api.py", "tesla: unavailable classify or -> and"),
+    ("teslaontarget/tesla_api.py", 'uid = f"TESLA-{hashlib.md5(str(vehicle_id).encode()).hexdigest()[:8]}"',
+     'uid = f"TESLA-{hashlib.md5(str(vehicle_id).encode()).hexdigest()[:7]}"',
+     "tests/test_tesla_api.py", "tesla: UID md5 slice [:8] -> [:7]"),
 ]
 
 

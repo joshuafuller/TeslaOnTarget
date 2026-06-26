@@ -21,6 +21,15 @@ from .utils import calculate_distance, save_json_file, load_json_file
 from .cot import generate_cot_packet, format_cot_for_tak
 from .tak_client import TAKClient
 
+# Tesla get_vehicle_data endpoint sets
+_INIT_ENDPOINTS = ('location_data;drive_state;charge_state;vehicle_state;'
+                   'climate_state;vehicle_config;gui_settings')
+_LOOP_ENDPOINTS = ('location_data;drive_state;charge_state;vehicle_state;'
+                   'climate_state;vehicle_config')
+# Substrings in an API error that mean "slow down" rather than "broken"
+_RATE_LIMIT_MARKERS = ('429', 'rate limit', 'too many requests', 'timeout')
+
+
 class TeslaCoT:
     def __init__(self, vehicle_id=None, tak_client=None):
         # Load configuration
@@ -45,6 +54,10 @@ class TeslaCoT:
         self.rate_limit_backoff = 1  # Multiplier for delays
         self.consecutive_errors = 0
         self.last_rate_limit_time = 0
+        self.max_wake_attempts = 3
+        # Loop state (promoted from locals so the loop body is testable)
+        self.consecutive_no_gps_count = 0
+        self.vehicle_woken_once = True
         
         # Debug mode - captures all Tesla API responses
         self.debug_mode = getattr(self.config, 'DEBUG_MODE', True)  # Default to True for now
@@ -302,220 +315,196 @@ class TeslaCoT:
             else:
                 logger.warning("No valid position for dead reckoning")
                 break
-    
-    def fetch_and_send_data_for_vehicle(self, vehicle):
-        """Main loop to fetch data from Tesla API and send to TAK."""
-        # Generate a hashed UID for the vehicle based on its VIN
-        vehicle_data = None
-        vehicle_id = None
-        wake_attempts = 0
-        max_wake_attempts = 3
-        
-        # Initial setup - try to get vehicle data
-        logger.info(f"Initializing tracking for {vehicle.get('display_name', 'Unknown')}...")
-        
-        # First check if vehicle is asleep
+
+    def _wake_if_asleep(self, vehicle):
+        """Send a wake command if the vehicle reports asleep (best-effort)."""
         if vehicle.get("state") == "asleep":
-            logger.info(f"Vehicle is asleep. Attempting to wake for initial position...")
+            logger.info("Vehicle is asleep. Attempting to wake for initial position...")
             try:
                 vehicle.sync_wake_up()
                 logger.info("Vehicle wake command sent, waiting for it to come online...")
-                time.sleep(5)  # Give it a moment to wake up
+                time.sleep(5)
             except Exception as e:
                 logger.warning(f"Failed to wake vehicle: {e}")
-        
-        # Now try to get vehicle data
-        while vehicle_data is None and wake_attempts < max_wake_attempts:
+
+    def _fetch_initial_data(self, vehicle):
+        """Retry get_vehicle_data up to max_wake_attempts; return data or None."""
+        attempts = 0
+        while attempts < self.max_wake_attempts:
             try:
-                # Tesla API now requires specific endpoints to get location data
-                # Using all available endpoints to capture complete data
-                vehicle_data = vehicle.get_vehicle_data(endpoints='location_data;drive_state;charge_state;vehicle_state;climate_state;vehicle_config;gui_settings')
-                vehicle_id = vehicle_data.get("vin", 
-                                             vehicle_data.get("vehicle_state", {}).get("vehicle_name"))
-                logger.info(f"Successfully got initial vehicle data")
-                
-                # Save debug capture of initial data
+                vehicle_data = vehicle.get_vehicle_data(endpoints=_INIT_ENDPOINTS)
+                logger.info("Successfully got initial vehicle data")
                 self.save_debug_capture(vehicle_data, "initial_vehicle_data")
+                return vehicle_data
             except Exception as e:
-                wake_attempts += 1
-                logger.warning(f"Failed to get vehicle data (attempt {wake_attempts}/{max_wake_attempts}): {e}")
-                if wake_attempts < max_wake_attempts:
-                    time.sleep(10)  # Wait before retry
-        
+                attempts += 1
+                logger.warning(f"Failed to get vehicle data (attempt {attempts}/{self.max_wake_attempts}): {e}")
+                if attempts < self.max_wake_attempts:
+                    time.sleep(10)
+        return None
+
+    def _seed_initial_position(self, vehicle):
+        """Acquire the first fix and seed last-known position.
+
+        Returns True if tracking should proceed, False if there is nothing to
+        work with (no fresh data and no cached position).
+        """
+        logger.info(f"Initializing tracking for {vehicle.get('display_name', 'Unknown')}...")
+        self._wake_if_asleep(vehicle)
+        vehicle_data = self._fetch_initial_data(vehicle)
         if vehicle_data is None:
-            logger.error(f"Failed to get initial vehicle data after {max_wake_attempts} attempts")
-            # Try to use cached position if available
+            logger.error(f"Failed to get initial vehicle data after {self.max_wake_attempts} attempts")
             if self.last_known_valid_data:
                 logger.info("Using cached position data")
-                vehicle_id = vehicle.get('vin', vehicle.get('id_s', 'unknown'))
-                # Send cached position immediately
+                self.send_to_cot(self.last_known_valid_data)
+                return True
+            logger.error(f"No cached data available for {vehicle.get('display_name', 'Unknown')}")
+            return False
+        initial_data = self.extract_relevant_data(vehicle_data, vehicle)
+        if initial_data.get('latitude') and initial_data.get('longitude'):
+            self.last_known_valid_data = initial_data
+            self.save_last_position_to_file(initial_data)
+            logger.info(f"Saved initial position: {initial_data.get('latitude')}, {initial_data.get('longitude')}")
+        return True
+
+    def _classify_api_error(self, error_str):
+        """Classify a (lowercased) API error string: rate_limit / unavailable / other."""
+        if any(marker in error_str for marker in _RATE_LIMIT_MARKERS):
+            return "rate_limit"
+        if "vehicle unavailable" in error_str or "asleep" in error_str:
+            return "unavailable"
+        return "other"
+
+    def _handle_api_error(self, exc):
+        """React to a get_vehicle_data failure; return seconds to sleep before retry."""
+        kind = self._classify_api_error(str(exc).lower())
+        if kind == "rate_limit":
+            self.consecutive_errors += 1
+            self.rate_limit_backoff = min(self.rate_limit_backoff * 2, 32)
+            self.last_rate_limit_time = time.time()
+            delay = self.config.API_LOOP_DELAY * self.rate_limit_backoff
+            logger.warning(f"Rate limit detected! Backing off to {delay}s delay (error #{self.consecutive_errors})")
+            logger.warning(f"Error details: {exc}")
+            if self.last_known_valid_data:
+                self.send_to_cot(self.last_known_valid_data)
+            return delay
+        if kind == "unavailable":
+            logger.info("Vehicle is asleep/unavailable. Using last known position.")
+            if self.last_known_valid_data:
                 self.send_to_cot(self.last_known_valid_data)
             else:
-                logger.error(f"No cached data available for {vehicle.get('display_name', 'Unknown')}")
-                return
+                logger.warning("No last known position available")
+            return self.config.API_LOOP_DELAY
+        # other
+        self.consecutive_errors += 1
+        logger.error(f"API error (#{self.consecutive_errors}): {exc}")
+        if self.consecutive_errors >= 3:
+            self.rate_limit_backoff = min(self.rate_limit_backoff * 1.5, 16)
+            delay = self.config.API_LOOP_DELAY * self.rate_limit_backoff
+            logger.warning(f"Multiple API errors detected. Backing off to {delay}s delay")
+            return delay
+        return self.config.API_LOOP_DELAY
+
+    def _start_dead_reckoning(self, data):
+        """(Re)start the dead-reckoning thread for the given position, if moving."""
+        if self.dead_reckoning_thread and self.dead_reckoning_thread.is_alive():
+            logger.debug("Restarting dead reckoning with new position")
+            self.stop_dead_reckoning.set()
+            self.dead_reckoning_thread.join(timeout=1)
+        speed = data.get('speed', 0)
+        shift_state = data.get('shift_state')
+        if (speed is not None and speed > 0) or shift_state in ['D', 'R']:
+            logger.info(f"Starting dead reckoning interpolation (speed: {speed}mph, gear: {shift_state})")
+            self.stop_dead_reckoning.clear()
+            self.dead_reckoning_thread = threading.Thread(
+                target=self.dead_reckoning_update, args=(data.copy(),))
+            self.dead_reckoning_thread.start()
         else:
-            # Extract initial data to save position
-            initial_data = self.extract_relevant_data(vehicle_data, vehicle)
-            if initial_data.get('latitude') and initial_data.get('longitude'):
-                self.last_known_valid_data = initial_data
-                self.save_last_position_to_file(initial_data)
-                logger.info(f"Saved initial position: {initial_data.get('latitude')}, {initial_data.get('longitude')}")
-        
-        # Main loop
-        consecutive_no_gps_count = 0
-        vehicle_woken_once = True  # We already woke it in initialization
-        
+            logger.debug(f"Vehicle not moving (speed: {speed}mph, gear: {shift_state}), skipping dead reckoning")
+
+    def _handle_valid_gps(self, relevant_data):
+        """Persist + send a fresh fix and (re)start interpolation."""
+        self.consecutive_no_gps_count = 0
+        self.last_known_valid_data = relevant_data.copy()
+        self.save_last_position_to_file(self.last_known_valid_data)
+        self.send_to_cot(relevant_data)
+        if getattr(self.config, 'DEAD_RECKONING_ENABLED', False):
+            self._start_dead_reckoning(relevant_data.copy())
+
+    def _handle_missing_gps(self):
+        """No fresh GPS: keep interpolating / resend the last known position."""
+        logger.warning("No valid GPS coordinates from Tesla API")
+        if not (self.dead_reckoning_thread and self.dead_reckoning_thread.is_alive()):
+            if getattr(self.config, 'DEAD_RECKONING_ENABLED', False):
+                if self.last_known_valid_data and self.last_known_valid_data.get('speed', 0):
+                    logger.info("No GPS - starting dead reckoning based on last known position")
+                    self.stop_dead_reckoning.clear()
+                    self.dead_reckoning_thread = threading.Thread(
+                        target=self.dead_reckoning_update,
+                        args=(self.last_known_valid_data.copy(),))
+                    self.dead_reckoning_thread.start()
+        self.consecutive_no_gps_count += 1
+        logger.warning(f"No valid GPS data available (count: {self.consecutive_no_gps_count})")
+        if self.last_known_valid_data:
+            logger.debug("Using last known position")
+            self.send_to_cot(self.last_known_valid_data)
+
+    def _recheck_wake(self, vehicle):
+        """Wake the vehicle mid-loop if it is asleep (only when not already woken)."""
+        if self.vehicle_woken_once:
+            return
+        vehicle_list = vehicle._owner.vehicle_list()
+        for v in vehicle_list:
+            if v['id'] == vehicle['id']:
+                if v.get('state') == 'asleep':
+                    logger.info(f"Vehicle {vehicle.get('display_name')} is asleep. Waking for initial position...")
+                    try:
+                        vehicle.sync_wake_up()
+                        self.vehicle_woken_once = True
+                        logger.info("Vehicle woken successfully")
+                    except Exception as e:
+                        logger.warning(f"Failed to wake vehicle: {e}")
+                break
+
+    def _poll_once(self, vehicle):
+        """Run one tracking iteration: fetch, process, and sleep one interval."""
+        self._recheck_wake(vehicle)
+        try:
+            vehicle_data = vehicle.get_vehicle_data(endpoints=_LOOP_ENDPOINTS)
+            self.save_debug_capture(vehicle_data, "vehicle_data")
+            if self.consecutive_errors > 0 or self.rate_limit_backoff > 1:
+                logger.info("API responding normally again. Resetting backoff.")
+                self.consecutive_errors = 0
+                self.rate_limit_backoff = 1
+        except Exception as e:
+            time.sleep(self._handle_api_error(e))
+            return
+
+        relevant_data = self.extract_relevant_data(vehicle_data, vehicle)
+        speed = relevant_data.get('speed', 0)
+        speed_display = f"{speed}mph" if speed is not None else "0mph"
+        dr_status = "ENABLED" if getattr(self.config, 'DEAD_RECKONING_ENABLED', False) else "DISABLED"
+        ap_state = relevant_data.get('autopilot_state')
+        if ap_state is None and relevant_data.get('shift_state') in ['D', 'R']:
+            logger.warning("autopilot_state field not available in Tesla API response - FSD detection may not work")
+        logger.info(f"Got vehicle data: lat={relevant_data.get('latitude')}, lon={relevant_data.get('longitude')}, speed={speed_display}, battery={relevant_data.get('battery_level')}%, autopilot_state={ap_state}, UID={relevant_data.get('UID')}, dead_reckoning={dr_status}")
+
+        if relevant_data.get('latitude') and relevant_data.get('longitude'):
+            self._handle_valid_gps(relevant_data)
+        else:
+            self._handle_missing_gps()
+
+        time.sleep(self.config.API_LOOP_DELAY)
+
+    def fetch_and_send_data_for_vehicle(self, vehicle):  # pragma: no cover - infinite supervisor loop
+        """Main loop: fetch from the Tesla API and forward to TAK until the process exits."""
+        self.consecutive_no_gps_count = 0
+        self.vehicle_woken_once = True  # already woken during initial seeding
+        if not self._seed_initial_position(vehicle):
+            return
         while True:
             try:
-                # Check if vehicle needs to be woken (only if we haven't woken it yet)
-                if not vehicle_woken_once:
-                    # Get fresh vehicle state
-                    vehicle_list = vehicle._owner.vehicle_list()
-                    for v in vehicle_list:
-                        if v['id'] == vehicle['id']:
-                            if v.get('state') == 'asleep':
-                                logger.info(f"Vehicle {vehicle.get('display_name')} is asleep. Waking for initial position...")
-                                try:
-                                    vehicle.sync_wake_up()
-                                    vehicle_woken_once = True
-                                    logger.info("Vehicle woken successfully")
-                                except Exception as e:
-                                    logger.warning(f"Failed to wake vehicle: {e}")
-                            break
-                
-                # Try to get vehicle data
-                try:
-                    vehicle_data = vehicle.get_vehicle_data(endpoints='location_data;drive_state;charge_state;vehicle_state;climate_state;vehicle_config')
-                    
-                    # Save debug capture
-                    self.save_debug_capture(vehicle_data, "vehicle_data")
-                    
-                    # Reset rate limiting on success
-                    if self.consecutive_errors > 0 or self.rate_limit_backoff > 1:
-                        logger.info(f"API responding normally again. Resetting backoff.")
-                        self.consecutive_errors = 0
-                        self.rate_limit_backoff = 1
-                        
-                except Exception as e:
-                    error_str = str(e).lower()
-                    
-                    # Check for rate limiting indicators
-                    if any(indicator in error_str for indicator in ['429', 'rate limit', 'too many requests', 'timeout']):
-                        self.consecutive_errors += 1
-                        self.rate_limit_backoff = min(self.rate_limit_backoff * 2, 32)  # Max 32x backoff
-                        self.last_rate_limit_time = time.time()
-                        
-                        delay = self.config.API_LOOP_DELAY * self.rate_limit_backoff
-                        logger.warning(f"Rate limit detected! Backing off to {delay}s delay (error #{self.consecutive_errors})")
-                        logger.warning(f"Error details: {e}")
-                        
-                        # Send cached position to keep TAK updated
-                        if self.last_known_valid_data:
-                            self.send_to_cot(self.last_known_valid_data)
-                            
-                        time.sleep(delay)
-                        continue
-                        
-                    elif "vehicle unavailable" in error_str or "asleep" in error_str:
-                        logger.info(f"Vehicle is asleep/unavailable. Using last known position.")
-                        if self.last_known_valid_data:
-                            self.send_to_cot(self.last_known_valid_data)
-                        else:
-                            logger.warning("No last known position available")
-                        time.sleep(self.config.API_LOOP_DELAY)
-                        continue
-                    else:
-                        # Other errors - log and continue
-                        self.consecutive_errors += 1
-                        logger.error(f"API error (#{self.consecutive_errors}): {e}")
-                        
-                        # If we're getting repeated errors, start backing off
-                        if self.consecutive_errors >= 3:
-                            self.rate_limit_backoff = min(self.rate_limit_backoff * 1.5, 16)
-                            delay = self.config.API_LOOP_DELAY * self.rate_limit_backoff
-                            logger.warning(f"Multiple API errors detected. Backing off to {delay}s delay")
-                            time.sleep(delay)
-                        else:
-                            time.sleep(self.config.API_LOOP_DELAY)
-                        continue
-                
-                relevant_data = self.extract_relevant_data(vehicle_data, vehicle)
-                
-                # Log key data including speed and FSD status for debugging
-                speed = relevant_data.get('speed', 0)
-                speed_display = f"{speed}mph" if speed is not None else "0mph"
-                dr_status = "ENABLED" if getattr(self.config, 'DEAD_RECKONING_ENABLED', False) else "DISABLED"
-                
-                # Check if autopilot_state is available
-                ap_state = relevant_data.get('autopilot_state')
-                if ap_state is None and relevant_data.get('shift_state') in ['D', 'R']:
-                    logger.warning("autopilot_state field not available in Tesla API response - FSD detection may not work")
-                
-                logger.info(f"Got vehicle data: lat={relevant_data.get('latitude')}, lon={relevant_data.get('longitude')}, speed={speed_display}, battery={relevant_data.get('battery_level')}%, autopilot_state={ap_state}, UID={relevant_data.get('UID')}, dead_reckoning={dr_status}")
-                
-                
-                # Check if we have valid GPS data
-                if relevant_data.get('latitude') and relevant_data.get('longitude'):
-                    consecutive_no_gps_count = 0  # Reset counter
-                    
-                    # Save valid position
-                    self.last_known_valid_data = relevant_data.copy()
-                    self.save_last_position_to_file(self.last_known_valid_data)
-                    
-                    # Send current position
-                    self.send_to_cot(relevant_data)
-                    
-                    # Start or restart dead reckoning for interpolation between GPS updates
-                    if getattr(self.config, 'DEAD_RECKONING_ENABLED', False):
-                        # Stop existing dead reckoning thread if running
-                        if self.dead_reckoning_thread and self.dead_reckoning_thread.is_alive():
-                            logger.debug("Restarting dead reckoning with new position")
-                            self.stop_dead_reckoning.set()
-                            self.dead_reckoning_thread.join(timeout=1)
-                        
-                        # Start dead reckoning if vehicle is moving OR if shift state is D/R
-                        speed = relevant_data.get('speed', 0)
-                        shift_state = relevant_data.get('shift_state')
-                        if (speed is not None and speed > 0) or shift_state in ['D', 'R']:
-                            logger.info(f"Starting dead reckoning interpolation (speed: {speed}mph, gear: {shift_state})")
-                            self.stop_dead_reckoning.clear()
-                            self.dead_reckoning_thread = threading.Thread(
-                                target=self.dead_reckoning_update,
-                                args=(relevant_data.copy(),)
-                            )
-                            self.dead_reckoning_thread.start()
-                        else:
-                            logger.debug(f"Vehicle not moving (speed: {speed}mph, gear: {shift_state}), skipping dead reckoning")
-                else:
-                    logger.warning("No valid GPS coordinates from Tesla API")
-                    
-                    # Continue dead reckoning if already running
-                    if not (self.dead_reckoning_thread and self.dead_reckoning_thread.is_alive()):
-                        if getattr(self.config, 'DEAD_RECKONING_ENABLED', False):
-                            if self.last_known_valid_data and self.last_known_valid_data.get('speed', 0):
-                                logger.info("No GPS - starting dead reckoning based on last known position")
-                                self.stop_dead_reckoning.clear()
-                                self.dead_reckoning_thread = threading.Thread(
-                                    target=self.dead_reckoning_update,
-                                    args=(self.last_known_valid_data.copy(),)
-                                )
-                                self.dead_reckoning_thread.start()
-                    
-                    consecutive_no_gps_count += 1
-                    logger.warning(f"No valid GPS data available (count: {consecutive_no_gps_count})")
-                    
-                    # Don't keep waking the vehicle if it's parked
-                    # We already got initial position during setup
-                    # Just use the last known position
-                    
-                    # Use last known position if available
-                    if self.last_known_valid_data:
-                        logger.debug("Using last known position")
-                        # Send last known position to keep it alive in TAK
-                        self.send_to_cot(self.last_known_valid_data)
-                
-                time.sleep(self.config.API_LOOP_DELAY)
-                
+                self._poll_once(vehicle)
             except Exception as e:
                 logger.error(f"Error fetching vehicle data: {e}")
                 time.sleep(self.config.API_LOOP_DELAY)
