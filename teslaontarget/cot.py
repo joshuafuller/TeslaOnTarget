@@ -15,6 +15,84 @@ def celsius_to_fahrenheit(celsius):
     return (celsius * 9/5) + 32
 
 
+def _charging_time_remark(data):
+    """Return the ' (Xh Ym to Z%)' charging-time fragment, or '' if unknown."""
+    charge_limit_soc = data.get("charge_limit_soc", 80)
+    minutes_to_full = data.get("minutes_to_full_charge", 0)
+    time_to_full = data.get("time_to_full_charge", 0)
+    if minutes_to_full and minutes_to_full > 0:
+        hours = int(minutes_to_full // 60)
+        mins = int(minutes_to_full % 60)
+        if hours > 0:
+            return f" ({hours}h {mins}m to {charge_limit_soc}%)"
+        return f" ({mins}m to {charge_limit_soc}%)"
+    if time_to_full and time_to_full > 0:
+        if time_to_full >= 1:
+            return f" ({time_to_full:.1f}h to {charge_limit_soc}%)"
+        mins = int(time_to_full * 60)
+        return f" ({mins}m to {charge_limit_soc}%)"
+    return ""
+
+
+def _charging_remark(data):
+    """Return the ' | <state> ...' charging fragment, or '' when not charging."""
+    charge_state = data.get("charging_state", "Disconnected")
+    if charge_state in ["Disconnected", "Complete", None]:
+        return ""
+    text = f" | {charge_state}" + _charging_time_remark(data)
+    if data.get("charge_port_door_open", False):
+        text += " Port Open"
+    return text
+
+
+def _autopilot_remark(data, shift_state):
+    """Return the autopilot/FSD fragment, only meaningful while driving."""
+    autopilot_state = data.get("autopilot_state", 0)
+    if shift_state not in ["D", "R"] or not autopilot_state:
+        return ""
+    return {
+        2: " | AUTOPILOT ACTIVE",
+        3: " | FSD ACTIVE",
+        1: " | AUTOPILOT AVAILABLE",
+    }.get(autopilot_state, "")
+
+
+def _security_remark(data, shift_state):
+    """Return the parked security fragment (sentry/doors/windows/trunks)."""
+    if not (shift_state == "P" or shift_state is None):
+        return ""
+    text = f" | Sentry: {'ON' if data.get('sentry_mode', False) else 'OFF'}"
+    locked = data.get("locked")
+    if locked is not None:
+        text += f" | Doors: {'Locked' if locked else 'Unlocked'}"
+    windows_open = [label for key, label in (
+        ("fd_window", "FD"), ("fp_window", "FP"),
+        ("rd_window", "RD"), ("rp_window", "RP")) if data.get(key, 0) > 0]
+    if windows_open:
+        text += f" | WINDOWS OPEN: {','.join(windows_open)}"
+    if data.get("ft", 0) > 0:
+        text += " | FRUNK OPEN"
+    if data.get("rt", 0) > 0:
+        text += " | TRUNK OPEN"
+    return text
+
+
+def _build_remarks(data):
+    """Build the single-line CoT remarks string from vehicle data."""
+    shift_state = data.get("shift_state", "P")
+    remarks_text = f"Tesla {data.get('vehicle_model', 'Vehicle')}"
+    remarks_text += f" | Gear: {shift_state}" if shift_state else " | Gear: P"
+    battery_range = data.get("battery_range")
+    if battery_range is not None:
+        remarks_text += f" | Range: {battery_range:.0f} mi"
+    remarks_text += _charging_remark(data)
+    remarks_text += _autopilot_remark(data, shift_state)
+    if data.get("is_climate_on", False):
+        remarks_text += " | Climate: ON"
+    remarks_text += _security_remark(data, shift_state)
+    return remarks_text
+
+
 def generate_cot_packet(data):
     """Generate a Cursor on Target (CoT) XML packet from vehicle data.
     
@@ -114,98 +192,8 @@ def generate_cot_packet(data):
     
     # Add remarks with Tesla-specific info
     remarks = ET.SubElement(detail, "remarks")
-    charge_state = data.get("charging_state", "Disconnected")
-    sentry_mode = data.get("sentry_mode", False)
-    locked = data.get("locked")
-    shift_state = data.get("shift_state", "P")
-    battery_range = data.get("battery_range")
-    is_climate_on = data.get("is_climate_on", False)
-    charge_port_open = data.get("charge_port_door_open", False)
-    
-    # Check for open windows/trunks
-    windows_open = []
-    if data.get("fd_window", 0) > 0: windows_open.append("FD")
-    if data.get("fp_window", 0) > 0: windows_open.append("FP")
-    if data.get("rd_window", 0) > 0: windows_open.append("RD")
-    if data.get("rp_window", 0) > 0: windows_open.append("RP")
-    
-    frunk_open = data.get("ft", 0) > 0
-    trunk_open = data.get("rt", 0) > 0
-    
-    # Autopilot/FSD status
-    autopilot_state = data.get("autopilot_state", 0)
-    autopilot_style = data.get("autopilot_style")
-    
-    # Build remarks as a single line with separators for TAK compatibility
-    remarks_text = f"Tesla {data.get('vehicle_model', 'Vehicle')}"
-    
-    # Always show gear state
-    if shift_state:
-        remarks_text += f" | Gear: {shift_state}"
-    else:
-        remarks_text += " | Gear: P"  # Default to Park if unknown
-    
-    # Show range if available
-    if battery_range is not None:
-        remarks_text += f" | Range: {battery_range:.0f} mi"
-    
-    # Show if actively charging with time remaining
-    if charge_state not in ["Disconnected", "Complete", None]:
-        remarks_text += f" | {charge_state}"
-        
-        # Get charging time info
-        charge_limit_soc = data.get("charge_limit_soc", 80)
-        minutes_to_full = data.get("minutes_to_full_charge", 0)
-        time_to_full = data.get("time_to_full_charge", 0)
-        
-        # Show time to charge limit
-        if minutes_to_full and minutes_to_full > 0:
-            hours = int(minutes_to_full // 60)
-            mins = int(minutes_to_full % 60)
-            if hours > 0:
-                remarks_text += f" ({hours}h {mins}m to {charge_limit_soc}%)"
-            else:
-                remarks_text += f" ({mins}m to {charge_limit_soc}%)"
-        elif time_to_full and time_to_full > 0:
-            # Fallback to hours if minutes not available
-            if time_to_full >= 1:
-                remarks_text += f" ({time_to_full:.1f}h to {charge_limit_soc}%)"
-            else:
-                mins = int(time_to_full * 60)
-                remarks_text += f" ({mins}m to {charge_limit_soc}%)"
-        
-        if charge_port_open:
-            remarks_text += " Port Open"
-    
-    # Show if Autopilot/FSD is engaged when driving
-    if shift_state in ["D", "R"] and autopilot_state:
-        if autopilot_state == 2:
-            remarks_text += " | AUTOPILOT ACTIVE"
-        elif autopilot_state == 3:
-            remarks_text += " | FSD ACTIVE"
-        elif autopilot_state == 1:
-            remarks_text += " | AUTOPILOT AVAILABLE"
-    
-    # Climate status - important to know if someone might be in vehicle
-    if is_climate_on:
-        remarks_text += " | Climate: ON"
-    
-    # Security info when parked
-    if shift_state == "P" or shift_state is None:
-        remarks_text += f" | Sentry: {'ON' if sentry_mode else 'OFF'}"
-        if locked is not None:
-            remarks_text += f" | Doors: {'Locked' if locked else 'Unlocked'}"
-        
-        # Alert for security concerns
-        if windows_open:
-            remarks_text += f" | WINDOWS OPEN: {','.join(windows_open)}"
-        if frunk_open:
-            remarks_text += " | FRUNK OPEN"
-        if trunk_open:
-            remarks_text += " | TRUNK OPEN"
-    
-    remarks.text = remarks_text
-    
+    remarks.text = _build_remarks(data)
+
     # Convert to string
     cot_xml = ET.tostring(root, encoding='unicode')
     
