@@ -90,36 +90,24 @@ class TestSendCot:
             assert client.send_cot(b"x") is True
             conn.assert_called_once()
 
-    @patch("teslaontarget.tak_client.time.sleep")
-    def test_retries_connect_until_success(self, sleep, client):
+    def test_connect_failure_drops_update_and_reconnects_in_background(self, client):
+        # Fail fast: a dead server must not block the caller. Return False and
+        # hand recovery to the background reconnect thread.
         client.connected = False
-        calls = {"n": 0}
+        with patch.object(client, "connect", return_value=False), \
+             patch.object(client, "start_background_reconnect") as bg:
+            assert client.send_cot(b"x") is False
+            bg.assert_called_once()
 
-        def fake_connect():
-            calls["n"] += 1
-            if calls["n"] >= 2:
-                client.connected = True
-                client.socket = MagicMock()
-                return True
-            return False
-
-        with patch.object(client, "connect", side_effect=fake_connect):
-            assert client.send_cot(b"x") is True
-        sleep.assert_called_with(30)  # waited after the first failed connect
-
-    @patch("teslaontarget.tak_client.time.sleep")
-    def test_send_error_then_reconnect_and_succeed(self, sleep, client):
+    def test_send_error_drops_update_and_reconnects_in_background(self, client):
         client.connected = True
         sock = MagicMock()
-        sock.sendall.side_effect = [socket.error("broken pipe"), None]
+        sock.sendall.side_effect = socket.error("broken pipe")
         client.socket = sock
-
-        def reconnect():
-            client.connected = True
-            return True
-
-        with patch.object(client, "connect", side_effect=reconnect):
-            assert client.send_cot(b"x") is True
+        with patch.object(client, "start_background_reconnect") as bg:
+            assert client.send_cot(b"x") is False
+            bg.assert_called_once()
+        assert client.connected is False
         assert client.last_error == "broken pipe"
         assert client.last_error_time is not None
 

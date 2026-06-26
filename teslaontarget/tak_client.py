@@ -71,42 +71,39 @@ class TAKClient:
         logger.info("Disconnected from TAK server")
         
     def send_cot(self, cot_message):
-        """Send CoT message to TAK server with infinite retry logic.
-        
+        """Send a CoT message to the TAK server, failing fast.
+
+        If the server is unreachable or the send fails, this marks the client
+        disconnected, kicks off the background reconnect thread, and returns
+        ``False`` instead of blocking the caller. The poll loop sends a fresh
+        position on its next cycle, and the health monitor reacts to a prolonged
+        send gap -- so a single dropped update is harmless and the tracking
+        thread is never wedged behind a dead server.
+
         Args:
             cot_message: Formatted CoT message bytes
-            
+
         Returns:
-            bool: True if sent successfully
+            bool: True if sent successfully, False otherwise.
         """
-        retry_count = 0
-        while True:
-            if not self.connected:
-                retry_count += 1
-                logger.warning(f"Not connected to TAK server, attempting to connect (attempt {retry_count})")
-                if not self.connect():
-                    logger.warning(f"Failed to connect to TAK server, retrying in 30 seconds...")
-                    time.sleep(30)
-                    continue
-                    
-            try:
-                self.last_send_attempt = time.time()
-                bytes_sent = self.socket.sendall(cot_message)
-                logger.info(f"Sent CoT message to TAK server ({len(cot_message)} bytes)")
-                # Log the entire message for debugging
-                logger.info(f"CoT message sent: {cot_message.decode('utf-8', errors='ignore')}")
-                self.last_send_ok = time.time()
-                return True
-                
-            except socket.error as e:
-                logger.error(f"Failed to send CoT message: {e}")
-                self.connected = False
-                self.last_error = str(e)
-                self.last_error_time = time.time()
-                retry_count += 1
-                logger.warning(f"Connection lost, retrying in 30 seconds... (attempt {retry_count})")
-                time.sleep(30)
-                continue
+        if not self.connected and not self.connect():
+            logger.warning("TAK server unreachable; dropping update, reconnecting in background")
+            self.start_background_reconnect()
+            return False
+
+        try:
+            self.last_send_attempt = time.time()
+            self.socket.sendall(cot_message)
+            self.last_send_ok = time.time()
+            logger.info(f"Sent CoT message to TAK server ({len(cot_message)} bytes)")
+            return True
+        except socket.error as e:
+            logger.error(f"Failed to send CoT message: {e}")
+            self.connected = False
+            self.last_error = str(e)
+            self.last_error_time = time.time()
+            self.start_background_reconnect()
+            return False
     
     def _background_reconnect(self):
         """Background thread to keep trying to reconnect to TAK server."""

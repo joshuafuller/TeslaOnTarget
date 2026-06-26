@@ -75,9 +75,8 @@ MUTATIONS = [
     ("teslaontarget/tak_client.py", "self.connected = True\n            self.last_connect_ok",
      "self.connected = False\n            self.last_connect_ok",
      "tests/test_tak_client.py", "tak: connect leaves connected False"),
-    ("teslaontarget/tak_client.py", "self.last_send_ok = time.time()\n                return True",
-     "self.last_send_ok = time.time()\n                return False",
-     "tests/test_tak_client.py", "tak: send_cot returns False on success"),
+    ("teslaontarget/tak_client.py", "self.last_send_ok = time.time()", "self.last_send_ok = None",
+     "tests/test_tak_client.py", "tak: send_cot records last_send_ok"),
 
     # ---- health.py ----
     ("teslaontarget/health.py", "return max(0, int(now - last_ok))",

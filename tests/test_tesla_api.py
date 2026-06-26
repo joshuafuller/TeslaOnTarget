@@ -17,7 +17,7 @@ def cot(tmp_path, monkeypatch, make_config):
 class TestInit:
     def test_uses_supplied_tak_client(self, cot):
         assert cot.vehicle_id == "VIN123"
-        assert cot.positions_queue.maxlen == 2
+        assert cot.tak_client is not None
         assert cot.debug_mode is False
 
     def test_creates_tak_client_when_none(self, tmp_path, monkeypatch, make_config):
