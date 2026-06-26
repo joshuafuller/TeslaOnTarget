@@ -6,11 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Installation and Setup
 ```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Install package in development mode
-pip install -e .
+# Install uv: https://docs.astral.sh/uv/getting-started/installation/
+# Create the venv and install the project (+ dev deps)
+uv sync
 
 # Create configuration from template
 cp config.py.template config.py

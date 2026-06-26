@@ -26,7 +26,11 @@ class Config:
             config_path: Path to config.py file
         """
         if config_path is None:
-            # Look for config.py in parent directory
+            # Prefer an explicit path (set by the container) so config loading
+            # never depends on where the package happens to be installed.
+            config_path = os.environ.get('TESLAONTARGET_CONFIG')
+        if config_path is None:
+            # Fall back to config.py next to the package
             parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             config_path = os.path.join(parent_dir, 'config.py')
             

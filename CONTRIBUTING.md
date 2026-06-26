@@ -35,16 +35,12 @@ By participating in this project, you agree to abide by our code of conduct: be 
 git clone https://github.com/joshuafuller/TeslaOnTarget.git
 cd TeslaOnTarget
 
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install in development mode
-pip install -e .
-pip install pytest pytest-cov
+# Install uv: https://docs.astral.sh/uv/getting-started/installation/
+# Create the venv and install the project + dev dependencies
+uv sync
 
 # Run tests
-pytest
+uv run pytest
 ```
 
 ### Coding Standards
@@ -73,7 +69,7 @@ pytest
 ## Release Process
 
 ### Automated Release
-1. Update version in `teslaontarget/__init__.py` and `setup.py`
+1. Update version in `teslaontarget/__init__.py` and `pyproject.toml`
 2. Update CHANGELOG.md with release notes
 3. Commit changes: `git commit -am "Release v1.0.0"`
 4. Create and push tag:
