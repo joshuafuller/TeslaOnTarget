@@ -6,12 +6,12 @@ Settings can be provided as **environment variables** (Docker, via `.env`) or in
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| `COT_URL` | TAK server URL (`tcp://host:port`) | `tcp://YOUR_TAK_SERVER:8085` |
+| `COT_URL` | TAK server URL (`tcp://host:port`) | `tcp://<tak-host>:8085` (placeholder) |
 | `TESLA_USERNAME` | Your Tesla account email | required |
 | `API_LOOP_DELAY` | Seconds between Tesla API calls | `10` |
 | `LAST_POSITION_FILE` | Cache file for position data | `last_known_position.json` |
 | `DEBUG_MODE` | Save all Tesla API responses for analysis | `False` |
-| `DEAD_RECKONING_ENABLED` | Interpolate position between API updates | `True` (Docker default) |
+| `DEAD_RECKONING_ENABLED` | Interpolate position between API updates | `False` (the `config.py.template` and Docker set `True`) |
 | `DEAD_RECKONING_DELAY` | Seconds between interpolated updates (1 = 1Hz) | `1` |
 | `ALERT_WEBHOOK_URL` | ntfy topic / webhook for failure alerts (empty = disabled) | _(empty)_ |
 | `HEALTH_NO_SEND_SECONDS` | Stall threshold before forcing a reconnect (0 = auto) | `0` |
