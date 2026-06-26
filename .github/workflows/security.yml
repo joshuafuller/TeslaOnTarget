@@ -3,6 +3,9 @@ name: security
 # Consolidated Trivy scanning: secrets (blocking), dependency CVEs, container
 # image CVEs, and IaC/Dockerfile misconfiguration. Runs on PRs, on main, and
 # weekly to catch newly-disclosed CVEs in unchanged dependencies.
+#
+# Trivy is run from its official image (pinned) rather than trivy-action, whose
+# binary-installer step is unreliable on hosted runners.
 on:
   push:
     branches: [main]
@@ -15,6 +18,9 @@ permissions:
   contents: read
   security-events: write  # upload SARIF to the Security tab (public repo: free)
 
+env:
+  TRIVY_IMAGE: aquasec/trivy:0.65.0
+
 jobs:
   secrets:
     name: Secret scan (blocking)
@@ -22,28 +28,20 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Trivy secret scan
-        uses: aquasecurity/trivy-action@v0.33.1
-        with:
-          scan-type: fs
-          scan-ref: .
-          scanners: secret
-          exit-code: '1'  # a committed secret must fail the build
-          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+        run: |
+          docker run --rm -v "$PWD:/repo" "$TRIVY_IMAGE" \
+            fs --scanners secret --exit-code 1 --no-progress /repo
 
   vulnerabilities:
     name: Dependency CVEs (report)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Trivy filesystem vuln scan
-        uses: aquasecurity/trivy-action@v0.33.1
-        with:
-          scan-type: fs
-          scan-ref: .
-          scanners: vuln
-          format: sarif
-          output: trivy-deps.sarif
-          exit-code: '0'  # report; don't block merges on unfixable base CVEs
+      - name: Trivy dependency scan
+        run: |
+          docker run --rm -v "$PWD:/repo" "$TRIVY_IMAGE" \
+            fs --scanners vuln --format sarif --output /repo/trivy-deps.sarif \
+            --exit-code 0 --no-progress /repo
       - name: Upload results to Security tab
         # Forked-PR tokens lack security-events:write, so only upload for pushes,
         # schedules, and same-repo PRs (the scan itself still runs on forks).
@@ -59,13 +57,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Trivy config scan
-        uses: aquasecurity/trivy-action@v0.33.1
-        with:
-          scan-type: config
-          scan-ref: .
-          format: sarif
-          output: trivy-config.sarif
-          exit-code: '0'
+        run: |
+          docker run --rm -v "$PWD:/repo" "$TRIVY_IMAGE" \
+            config --format sarif --output /repo/trivy-config.sarif \
+            --exit-code 0 --no-progress /repo
       - name: Upload results to Security tab
         if: ${{ always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
         uses: github/codeql-action/upload-sarif@v3
@@ -81,13 +76,10 @@ jobs:
       - name: Build image
         run: docker build -t teslaontarget:scan .
       - name: Trivy image scan
-        uses: aquasecurity/trivy-action@v0.33.1
-        with:
-          scan-type: image
-          image-ref: teslaontarget:scan
-          format: sarif
-          output: trivy-image.sarif
-          exit-code: '0'
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/out" "$TRIVY_IMAGE" \
+            image --format sarif --output /out/trivy-image.sarif \
+            --exit-code 0 --no-progress teslaontarget:scan
       - name: Upload results to Security tab
         if: ${{ always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
         uses: github/codeql-action/upload-sarif@v3
