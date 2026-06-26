@@ -1,0 +1,74 @@
+name: security
+
+# Consolidated Trivy security scanning (closes the secret/dep/image/IaC issues
+# in one workflow rather than four). Runs on PRs (catch before merge), on main,
+# and weekly to catch newly-disclosed CVEs in unchanged dependencies.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: ['**']
+  schedule:
+    - cron: '0 6 * * 1'  # Mondays 06:00 UTC
+
+permissions:
+  contents: read
+  security-events: write  # upload SARIF to the Security tab (public repo: free)
+
+jobs:
+  secrets:
+    name: Secret scan (blocking)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Trivy secret scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: secret
+          exit-code: '1'  # a committed secret must fail the build
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+
+  deps-and-config:
+    name: Dependency + IaC scan (report)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Trivy filesystem scan (vuln + misconfig)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,misconfig
+          format: sarif
+          output: trivy-fs.sarif
+          exit-code: '0'  # report; don't block merges on unfixable base CVEs
+      - name: Upload results to Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-fs
+
+  image:
+    name: Container image scan (report)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build image
+        run: docker build -t teslaontarget:scan .
+      - name: Trivy image scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: image
+          image-ref: teslaontarget:scan
+          format: sarif
+          output: trivy-image.sarif
+          exit-code: '0'
+      - name: Upload results to Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image
