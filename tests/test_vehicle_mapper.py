@@ -14,13 +14,13 @@ def _vehicle(**over):
 
 class TestVehicleUid:
     def test_stable_md5_of_id_s(self):
-        assert vehicle_uid(_vehicle()) == "TESLA-" + hashlib.md5(b"3744443410507808").hexdigest()[:8]
+        assert vehicle_uid(_vehicle()) == "TESLA-" + hashlib.md5(b"3744443410507808", usedforsecurity=False).hexdigest()[:8]
 
     def test_falls_back_to_vehicle_id_key(self):
-        assert vehicle_uid({"vehicle_id": "987"}) == "TESLA-" + hashlib.md5(b"987").hexdigest()[:8]
+        assert vehicle_uid({"vehicle_id": "987"}) == "TESLA-" + hashlib.md5(b"987", usedforsecurity=False).hexdigest()[:8]
 
     def test_falls_back_to_unknown(self):
-        assert vehicle_uid({}) == "TESLA-" + hashlib.md5(b"unknown").hexdigest()[:8]
+        assert vehicle_uid({}) == "TESLA-" + hashlib.md5(b"unknown", usedforsecurity=False).hexdigest()[:8]
 
 
 class TestBuildVehicleModel:

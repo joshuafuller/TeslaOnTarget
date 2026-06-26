@@ -18,7 +18,7 @@ _MODEL_NAMES = {
 def vehicle_uid(vehicle: dict) -> str:
     """Stable CoT UID derived from the vehicle's owner-api id."""
     vehicle_id = vehicle.get("id_s", vehicle.get("vehicle_id", "unknown"))
-    return f"TESLA-{hashlib.md5(str(vehicle_id).encode()).hexdigest()[:8]}"
+    return f"TESLA-{hashlib.md5(str(vehicle_id).encode(), usedforsecurity=False).hexdigest()[:8]}"
 
 
 def build_vehicle_model(vehicle_config: dict) -> str:
