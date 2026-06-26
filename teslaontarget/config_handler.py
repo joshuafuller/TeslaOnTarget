@@ -30,6 +30,9 @@ class AppConfig:
     health_check_interval: int = 0
     health_hard_restart_seconds: int = 0
     health_file: str = "health.json"
+    # Optional push-notification endpoint (ntfy topic / generic webhook). Empty
+    # disables alerting -- so silent failures stay silent unless one is supplied.
+    alert_webhook_url: str = ""
 
     def validate(self) -> bool:
         """True when the required fields are present."""

@@ -12,6 +12,7 @@ import os
 import threading
 import time
 import logging
+import urllib.request
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -27,12 +28,15 @@ class HealthMonitor:
         max_no_send_seconds: int = 120,
         check_interval: int = 15,
         hard_restart_seconds: Optional[int] = None,
+        alert_url: str = "",
     ):
         self.tak_client = tak_client
         self.health_file = health_file
         self.max_no_send_seconds = max_no_send_seconds
         self.check_interval = check_interval
         self.hard_restart_seconds = hard_restart_seconds or (max_no_send_seconds * 5)
+        self.alert_url = alert_url
+        self._alerted = False  # de-dupe: at most one alert per unhealthy episode
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
 
@@ -69,6 +73,20 @@ class HealthMonitor:
             return None
         return max(0, int(now - last_ok))
 
+    def _alert(self, message: str):
+        """Best-effort push to the configured webhook/ntfy topic. Never raises."""
+        if not self.alert_url:
+            return
+        try:
+            req = urllib.request.Request(
+                self.alert_url, data=message.encode("utf-8"),
+                headers={"Title": "TeslaOnTarget", "Content-Type": "text/plain"},
+            )
+            with urllib.request.urlopen(req, timeout=5):
+                pass  # close the response so we don't leak sockets/fds
+        except Exception as e:
+            logger.warning("Failed to send alert: %s", e)
+
     def _check_once(self, now):
         """Run a single health check: write the snapshot and react to staleness."""
         snap = self.tak_client.health_snapshot() if hasattr(self.tak_client, "health_snapshot") else {}
@@ -82,20 +100,25 @@ class HealthMonitor:
             "threshold_seconds": self.max_no_send_seconds,
         })
 
-        if stale_for is not None and stale_for > self.max_no_send_seconds:
-            logger.warning(
-                "No successful TAK send for %ss (> %ss). Forcing reconnect.",
-                stale_for, self.max_no_send_seconds,
-            )
-            try:
-                self.tak_client.disconnect()
-            except Exception:
-                pass
-            self.tak_client.start_background_reconnect()
+        if stale_for is None or stale_for <= self.max_no_send_seconds:
+            self._alerted = False  # healthy -> re-arm alerting for the next episode
+            return
 
-        if (stale_for is not None
-                and self.hard_restart_seconds is not None
-                and stale_for > self.hard_restart_seconds):
+        logger.warning(
+            "No successful TAK send for %ss (> %ss). Forcing reconnect.",
+            stale_for, self.max_no_send_seconds,
+        )
+        if not self._alerted:
+            self._alert(f"No TAK send for {stale_for}s (>{self.max_no_send_seconds}s); reconnecting")
+            self._alerted = True
+        try:
+            self.tak_client.disconnect()
+        except Exception:
+            pass
+        self.tak_client.start_background_reconnect()
+
+        if self.hard_restart_seconds is not None and stale_for > self.hard_restart_seconds:
+            self._alert(f"CRITICAL: no TAK send for {stale_for}s; restarting for recovery")
             logger.error(
                 "Health critical: no TAK send for %ss (> %ss). Exiting for supervisor restart.",
                 stale_for, self.hard_restart_seconds,

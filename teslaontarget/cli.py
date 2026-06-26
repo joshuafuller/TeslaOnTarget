@@ -117,6 +117,7 @@ def _build_health_monitor(tak_client, config):
     return HealthMonitor(
         tak_client, health_file=health_file, max_no_send_seconds=max_no_send,
         check_interval=check_interval, hard_restart_seconds=hard_restart,
+        alert_url=config.alert_webhook_url,
     )
 
 
@@ -161,6 +162,16 @@ def _monitor_threads(threads, config):
         time.sleep(5)
 
 
+def _stop_health(health):
+    """Stop the health monitor if one was started (best-effort)."""
+    if health is None:
+        return
+    try:
+        health.stop()
+    except Exception:
+        pass
+
+
 def main():
     """Main entry point for TeslaOnTarget."""
     args = _parse_args()
@@ -190,11 +201,7 @@ def main():
         sys.exit(1)
     finally:
         logger.info("TeslaOnTarget stopped")
-        try:
-            if health:
-                health.stop()
-        except Exception:
-            pass
+        _stop_health(health)
 
 
 if __name__ == '__main__':

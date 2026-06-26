@@ -128,6 +128,61 @@ class TestCheckOnce:
         ex.assert_not_called()
 
 
+class TestAlerting:
+    def test_alert_noop_when_no_url(self):
+        m = HealthMonitor(MagicMock(), alert_url="")
+        with patch("teslaontarget.health.urllib.request.urlopen") as uo:
+            m._alert("hi")
+        uo.assert_not_called()
+
+    def test_alert_posts_message_to_url(self):
+        m = HealthMonitor(MagicMock(), alert_url="https://ntfy.sh/tot")
+        with patch("teslaontarget.health.urllib.request.urlopen") as uo:
+            m._alert("stale!")
+        uo.assert_called_once()
+        req = uo.call_args[0][0]
+        assert req.full_url == "https://ntfy.sh/tot"
+        assert req.data == b"stale!"
+
+    def test_alert_error_is_swallowed(self):
+        m = HealthMonitor(MagicMock(), alert_url="https://x")
+        with patch("teslaontarget.health.urllib.request.urlopen", side_effect=OSError("net")):
+            m._alert("x")  # must not raise
+
+    def test_alert_fired_once_per_stale_episode(self, tmp_path):
+        client = _client(connected=False, last_send_ok=1000.0)
+        m = HealthMonitor(client, health_file=str(tmp_path / "h.json"),
+                          max_no_send_seconds=100, hard_restart_seconds=5000,
+                          alert_url="https://x")
+        with patch("teslaontarget.health.os._exit"), patch.object(m, "_alert") as alert:
+            m._check_once(now=1200.0)  # 200s stale -> alert
+            m._check_once(now=1300.0)  # still stale -> deduped
+        alert.assert_called_once()
+
+    def test_alert_rearms_after_recovery(self, tmp_path):
+        client = _client(connected=False, last_send_ok=1000.0)
+        m = HealthMonitor(client, health_file=str(tmp_path / "h.json"),
+                          max_no_send_seconds=100, hard_restart_seconds=5000,
+                          alert_url="https://x")
+        with patch("teslaontarget.health.os._exit"), patch.object(m, "_alert") as alert:
+            m._check_once(now=1200.0)  # stale -> alert #1
+            client.health_snapshot.return_value = {"connected": True, "last_send_ok": 1300.0}
+            m._check_once(now=1310.0)  # healthy -> re-arm
+            client.health_snapshot.return_value = {"connected": False, "last_send_ok": 1300.0}
+            m._check_once(now=1500.0)  # stale again -> alert #2
+        assert alert.call_count == 2
+
+    def test_critical_sends_alert_then_exits(self, tmp_path):
+        client = _client(connected=False, last_send_ok=1000.0)
+        m = HealthMonitor(client, health_file=str(tmp_path / "h.json"),
+                          max_no_send_seconds=100, hard_restart_seconds=500,
+                          alert_url="https://x")
+        with patch("teslaontarget.health.os._exit") as ex, patch.object(m, "_alert") as alert:
+            m._check_once(now=2000.0)  # 1000s stale > 500 critical
+        ex.assert_called_once_with(12)
+        assert alert.call_count == 2  # stale warning + critical
+
+
 class TestThreadLifecycle:
     def test_start_then_stop(self, monitor):
         with patch("teslaontarget.health.os._exit"):

@@ -3,7 +3,6 @@ import logging
 import os
 import threading
 import time
-from collections import deque
 from datetime import datetime
 from math import cos, degrees, radians, sin
 
@@ -32,8 +31,6 @@ class TeslaCoT:
         self.vehicle_id = vehicle_id
         self.position_file = self._get_position_filename()
         self.last_known_valid_data = self.read_last_position_from_file()
-        self.positions_queue = deque(maxlen=2)
-        self.vehicle_uids = {}
         self.dead_reckoning_thread = None
         self.stop_dead_reckoning = threading.Event()
 

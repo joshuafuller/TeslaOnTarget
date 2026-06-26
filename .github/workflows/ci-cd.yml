@@ -36,5 +36,7 @@ jobs:
           python-version: '3.14'  # match the runtime Docker image
       - name: Install dependencies
         run: uv sync --frozen
-      - name: Run tests
-        run: uv run pytest -v
+      - name: Run tests (100% line+branch coverage gate)
+        run: uv run pytest -v --cov=teslaontarget --cov-branch --cov-report=term-missing --cov-fail-under=100
+      - name: Mutation gate (no surviving mutants)
+        run: uv run python scripts/mutation_check.py

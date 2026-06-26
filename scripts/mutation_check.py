@@ -75,20 +75,33 @@ MUTATIONS = [
     ("teslaontarget/tak_client.py", "self.connected = True\n            self.last_connect_ok",
      "self.connected = False\n            self.last_connect_ok",
      "tests/test_tak_client.py", "tak: connect leaves connected False"),
-    ("teslaontarget/tak_client.py", "self.last_send_ok = time.time()\n                return True",
-     "self.last_send_ok = time.time()\n                return False",
-     "tests/test_tak_client.py", "tak: send_cot returns False on success"),
+    ("teslaontarget/tak_client.py", "self.last_send_ok = time.time()", "self.last_send_ok = None",
+     "tests/test_tak_client.py", "tak: send_cot records last_send_ok"),
+
+    # ---- health.py (alerting) ----
+    ("teslaontarget/health.py", "if not self.alert_url:", "if self.alert_url:",
+     "tests/test_health.py", "health: alert url guard inverted"),
+    ("teslaontarget/health.py", "if not self._alerted:", "if self._alerted:",
+     "tests/test_health.py", "health: alert dedup guard inverted"),
+    ("teslaontarget/health.py",
+     "self._alerted = False  # healthy -> re-arm alerting for the next episode",
+     "self._alerted = True  # healthy -> re-arm alerting for the next episode",
+     "tests/test_health.py", "health: alert re-arm on recovery"),
 
     # ---- health.py ----
     ("teslaontarget/health.py", "return max(0, int(now - last_ok))",
      "return max(0, int(now + last_ok))",
      "tests/test_health.py", "health: staleness now-last -> now+last"),
-    ("teslaontarget/health.py", "if stale_for is not None and stale_for > self.max_no_send_seconds:",
-     "if stale_for is not None and stale_for < self.max_no_send_seconds:",
-     "tests/test_health.py", "health: stale comparison flipped"),
+    ("teslaontarget/health.py", "if stale_for is None or stale_for <= self.max_no_send_seconds:",
+     "if stale_for is None or stale_for > self.max_no_send_seconds:",
+     "tests/test_health.py", "health: healthy early-return comparison flipped"),
     ("teslaontarget/health.py", "self.hard_restart_seconds = hard_restart_seconds or (max_no_send_seconds * 5)",
      "self.hard_restart_seconds = hard_restart_seconds or (max_no_send_seconds * 4)",
      "tests/test_health.py", "health: hard-restart default *5 -> *4"),
+
+    # ---- cli.py ----
+    ("teslaontarget/cli.py", "alert_url=config.alert_webhook_url", 'alert_url=""',
+     "tests/test_cli.py", "cli: alert_url wired from config"),
 
     # ---- tesla_api.py ----
     ("teslaontarget/tesla_api.py", "self.rate_limit_backoff = min(self.rate_limit_backoff * 2, 32)",

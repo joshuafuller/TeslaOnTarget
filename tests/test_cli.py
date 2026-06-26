@@ -110,11 +110,13 @@ class TestBuildHealthMonitor:
 
     def test_uses_configured_values(self, make_config):
         cfg = make_config(api_loop_delay=10, health_no_send_seconds=300,
-                          health_check_interval=30, health_hard_restart_seconds=999)
+                          health_check_interval=30, health_hard_restart_seconds=999,
+                          alert_webhook_url="https://ntfy.sh/tot")
         with patch("teslaontarget.cli.HealthMonitor") as HM:
             cli._build_health_monitor(MagicMock(), cfg)
         kw = HM.call_args.kwargs
         assert kw["max_no_send_seconds"] == 300 and kw["hard_restart_seconds"] == 999
+        assert kw["alert_url"] == "https://ntfy.sh/tot"  # webhook wired through
 
 
 class TestWakeVehicles:
