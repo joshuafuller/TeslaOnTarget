@@ -228,10 +228,15 @@ class TestDeadReckoning:
         self._drive(cot, data, times=[1000, 1001, 1002], max_iters=2)
         cot.send_to_cot.assert_called_once()
 
-    def test_zero_coordinate_breaks_immediately(self, cot):
-        # latitude 0 formats fine for the log but is falsy -> "no valid position"
-        data = {"latitude": 0, "longitude": -87.0, "speed": 0}
-        # max_iters=2 so the loop body runs once and hits the else/break
+    def test_zero_coordinate_is_valid(self, cot):
+        # Regression: latitude 0.0 (equator) is a valid coordinate, not "missing".
+        data = {"latitude": 0.0, "longitude": 0.0, "speed": 0}
+        self._drive(cot, data, times=[1000, 1001, 1100], max_iters=2)
+        cot.send_to_cot.assert_called_once()
+
+    def test_none_coordinate_breaks(self, cot):
+        # Only genuinely-missing coordinates (None) stop dead reckoning.
+        data = {"latitude": None, "longitude": None, "speed": 0}
         self._drive(cot, data, times=[1000, 1001], max_iters=2)
         cot.send_to_cot.assert_not_called()
 

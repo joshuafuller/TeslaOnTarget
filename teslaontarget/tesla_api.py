@@ -237,11 +237,12 @@ class TeslaCoT:
         current_lat = initial_data.get('latitude')
         current_lon = initial_data.get('longitude')
         
-        logger.info(f"Dead reckoning started for up to {max_duration}s from lat={current_lat:.6f}, lon={current_lon:.6f}")
-        
+        logger.info(f"Dead reckoning started for up to {max_duration}s from lat={current_lat}, lon={current_lon}")
+
         update_count = 0
         while not self.stop_dead_reckoning.is_set():
-            if current_lat and current_lon:
+            # 0.0 is a valid coordinate (equator / prime meridian) -- check presence.
+            if current_lat is not None and current_lon is not None:
                 # Wait for the next update interval
                 time.sleep(self.config.DEAD_RECKONING_DELAY)
                 
