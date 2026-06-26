@@ -60,3 +60,7 @@ teslaontarget_live.log
 
 # uv / virtualenv
 .venv/
+
+# mutation testing sandboxes
+mutants/
+.mutmut-cache

@@ -35,7 +35,13 @@ tesla-auth = "teslaontarget.auth:main"
 
 # PEP 735 dependency group; installed by `uv sync`, excluded by `uv sync --no-dev`.
 [dependency-groups]
-dev = ["pytest>=8.0.0", "flake8>=7.0.0"]
+dev = [
+    "pytest>=8.0.0",
+    "flake8>=7.0.0",
+    "pytest-cov>=5.0.0",
+    "hypothesis>=6.0.0",
+    "mutmut>=3.0.0",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -46,3 +52,21 @@ packages = ["teslaontarget"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.mutmut]
+# Whole package (mutmut needs the full package importable). Mutation results are
+# only meaningful for modules with a mature test net; survivors in
+# not-yet-covered modules are expected until their coverage lands.
+paths_to_mutate = ["teslaontarget/"]
+tests_dir = ["tests/"]
+
+[tool.coverage.run]
+branch = true
+source = ["teslaontarget"]
+
+[tool.coverage.report]
+show_missing = true
+exclude_also = [
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]

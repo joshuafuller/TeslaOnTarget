@@ -63,57 +63,49 @@ class HealthMonitor:
         except Exception as e:
             logger.warning("Failed writing health file %s: %s", self.health_file, e)
 
+    def _staleness(self, now, last_ok):
+        """Seconds since the last successful send, or None if never sent."""
+        if last_ok is None:
+            return None
+        return max(0, int(now - last_ok))
+
+    def _check_once(self, now):
+        """Run a single health check: write the snapshot and react to staleness."""
+        snap = self.tak_client.health_snapshot() if hasattr(self.tak_client, "health_snapshot") else {}
+        stale_for = self._staleness(now, snap.get("last_send_ok"))
+
+        self._write_snapshot({
+            "time": now,
+            "connected": snap.get("connected"),
+            "tak": snap,
+            "stale_seconds": stale_for,
+            "threshold_seconds": self.max_no_send_seconds,
+        })
+
+        if stale_for is not None and stale_for > self.max_no_send_seconds:
+            logger.warning(
+                "No successful TAK send for %ss (> %ss). Forcing reconnect.",
+                stale_for, self.max_no_send_seconds,
+            )
+            try:
+                self.tak_client.disconnect()
+            except Exception:
+                pass
+            self.tak_client.start_background_reconnect()
+
+        if (stale_for is not None
+                and self.hard_restart_seconds is not None
+                and stale_for > self.hard_restart_seconds):
+            logger.error(
+                "Health critical: no TAK send for %ss (> %ss). Exiting for supervisor restart.",
+                stale_for, self.hard_restart_seconds,
+            )
+            # Exit the process to allow systemd/docker to restart it
+            os._exit(12)
+
     def _run(self):
         while not self._stop.is_set():
-            now = time.time()
-            snap = self.tak_client.health_snapshot() if hasattr(self.tak_client, "health_snapshot") else {}
-            last_ok = snap.get("last_send_ok")
-
-            # Compute staleness
-            stale_for = None
-            if last_ok is not None:
-                stale_for = max(0, int(now - last_ok))
-            else:
-                # Never sent yet; consider stale from process start
-                stale_for = None
-
-            # Write health file
-            snapshot = {
-                "time": now,
-                "connected": snap.get("connected"),
-                "tak": snap,
-                "stale_seconds": stale_for,
-                "threshold_seconds": self.max_no_send_seconds,
-            }
-            self._write_snapshot(snapshot)
-
-            # Act if stale
-            if stale_for is not None and stale_for > self.max_no_send_seconds:
-                logger.warning(
-                    "No successful TAK send for %ss (> %ss). Forcing reconnect.",
-                    stale_for,
-                    self.max_no_send_seconds,
-                )
-                try:
-                    self.tak_client.disconnect()
-                except Exception:
-                    pass
-                self.tak_client.start_background_reconnect()
-
-            # Escalate to hard restart if far beyond threshold
-            if (
-                stale_for is not None
-                and self.hard_restart_seconds is not None
-                and stale_for > self.hard_restart_seconds
-            ):
-                logger.error(
-                    "Health critical: no TAK send for %ss (> %ss). Exiting for supervisor restart.",
-                    stale_for,
-                    self.hard_restart_seconds,
-                )
-                # Exit the process to allow systemd/docker to restart it
-                os._exit(12)
-
+            self._check_once(time.time())
             # Sleep with stop awareness
             self._stop.wait(self.check_interval)
 
