@@ -3,11 +3,14 @@
 
 Bridge your Tesla vehicle with TAK (Team Awareness Kit) servers for real-time position tracking.
 
-![Python](https://img.shields.io/badge/python-3.7+-blue.svg)
+![Python](https://img.shields.io/badge/python-3.11+-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![TAK](https://img.shields.io/badge/TAK-Compatible-orange.svg)
 ![Tesla](https://img.shields.io/badge/Tesla-API-red.svg)
+[![CI](https://github.com/joshuafuller/TeslaOnTarget/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/joshuafuller/TeslaOnTarget/actions/workflows/ci-cd.yml)
+[![Security](https://github.com/joshuafuller/TeslaOnTarget/actions/workflows/security.yml/badge.svg)](https://github.com/joshuafuller/TeslaOnTarget/actions/workflows/security.yml)
 ![Docker](https://github.com/joshuafuller/TeslaOnTarget/actions/workflows/docker-publish.yml/badge.svg)
+[![Release](https://img.shields.io/github/v/release/joshuafuller/TeslaOnTarget)](https://github.com/joshuafuller/TeslaOnTarget/releases)
 ![GitHub Container Registry](https://img.shields.io/badge/ghcr.io-ready-brightgreen)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/joshuafuller/TeslaOnTarget)
 
@@ -29,14 +32,16 @@ TeslaOnTarget is a lightweight Python application that connects your Tesla vehic
 - **Multi-TAK Compatible** - Tested with iTAK, ATAK, and WebTAK
 - **Security Alerts** - Warnings for open windows/doors when parked
 - **Dead Reckoning** - Smooth 1Hz position updates between 10-second API polls
-- **Resilient Connection** - Automatic reconnection and error recovery
+- **Resilient Connection** - Fail-fast sends with automatic background reconnection
+- **Self-Healing Health Monitor** - Detects stalled TAK sends, forces reconnect, and restarts for recovery
+- **Failure Alerting** - Optional webhook/ntfy push when sends stall or a restart is needed (opt-in)
 - **Detailed Logging** - Comprehensive logs for troubleshooting
 - **Secure Token Storage** - OAuth2 token management via TeslaPy
 - **Location Caching** - Continues reporting last position when vehicle sleeps
 
 ## Requirements
 
-- **Python 3.7+** 
+- **Python 3.11+** 
 - **Tesla Account** with a vehicle
 - **TAK Server** (one of the following):
   - [OpenTAKServer](https://github.com/brian7704/OpenTAKServer)
@@ -59,6 +64,8 @@ TeslaOnTarget is a lightweight Python application that connects your Tesla vehic
 ```bash
 # Pull the latest image
 docker pull ghcr.io/joshuafuller/teslaontarget:latest
+# ...or pin a specific release (see Releases / CHANGELOG.md):
+# docker pull ghcr.io/joshuafuller/teslaontarget:1.2.0
 
 # Create configuration
 wget https://raw.githubusercontent.com/joshuafuller/TeslaOnTarget/main/.env.example
@@ -160,6 +167,9 @@ View live logs:
 | `DEBUG_MODE` | Save all Tesla API responses for analysis | `False` |
 | `DEAD_RECKONING_ENABLED` | Interpolate position between API updates for smooth tracking | `True` |
 | `DEAD_RECKONING_DELAY` | Seconds between interpolated position updates (1 = 1Hz) | `1` |
+| `ALERT_WEBHOOK_URL` | Optional ntfy topic / webhook for failure alerts (empty = disabled) | `` (off) |
+| `HEALTH_NO_SEND_SECONDS` | Stall threshold before forcing a reconnect (0 = auto) | `0` |
+| `HEALTH_HARD_RESTART_SECONDS` | No-send threshold before exiting for a supervisor restart (0 = auto) | `0` |
 
 ## 📡 TAK Server Setup
 
@@ -240,10 +250,14 @@ TeslaOnTarget/
 ├── teslaontarget/        # Main package directory
 │   ├── __init__.py      # Package initialization
 │   ├── __main__.py      # Entry point
-│   ├── tesla_api.py     # Tesla API integration
+│   ├── cli.py           # CLI / startup, per-vehicle tracking threads
+│   ├── tesla_api.py     # Tesla API integration + dead reckoning
+│   ├── vehicle_mapper.py # Tesla payload -> CoT data mapping (pure)
 │   ├── cot.py           # CoT message generation
-│   ├── config_handler.py # Configuration management
+│   ├── config_handler.py # Immutable AppConfig + loader
 │   ├── tak_client.py    # TAK server connection
+│   ├── health.py        # Health monitor + failure alerting
+│   ├── constants.py     # Shared physical constants
 │   ├── utils.py         # Helper functions
 │   └── auth.py          # Tesla authentication
 ├── teslaontarget.sh     # Single control script (start/stop/status)
@@ -363,8 +377,8 @@ Perfect for discovering new fields and debugging issues!
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/TeslaOnTarget/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/TeslaOnTarget/discussions)
+- **Issues**: [GitHub Issues](https://github.com/joshuafuller/TeslaOnTarget/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/joshuafuller/TeslaOnTarget/discussions)
 - **Documentation**: See [docs/](docs/) directory
 
 ---
