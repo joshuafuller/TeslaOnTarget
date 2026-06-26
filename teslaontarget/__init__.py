@@ -1,6 +1,6 @@
 """TeslaOnTarget - Bridge Tesla vehicles with TAK servers."""
 
-__version__ = "1.1.0"
+__version__ = "1.1.0"  # x-release-please-version
 __author__ = "TeslaOnTarget Contributors"
 
 from .tesla_api import TeslaCoT

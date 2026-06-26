@@ -1,0 +1,23 @@
+name: release-please
+
+# Automates versioning + CHANGELOG from Conventional Commits. On each push to
+# main it maintains a "release PR"; merging that PR bumps the version, updates
+# CHANGELOG.md, and tags vX.Y.Z (which docker-publish turns into a versioned
+# GHCR image). Cut a release simply by merging the release PR when you're ready.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
