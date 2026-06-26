@@ -27,8 +27,12 @@ class Config:
         """
         if config_path is None:
             # Prefer an explicit path (set by the container) so config loading
-            # never depends on where the package happens to be installed.
-            config_path = os.environ.get('TESLAONTARGET_CONFIG')
+            # never depends on where the package happens to be installed. Only
+            # honor it when the file exists, so a mis-set env var falls back to
+            # the package-adjacent config.py instead of silently using defaults.
+            env_path = os.environ.get('TESLAONTARGET_CONFIG')
+            if env_path and os.path.exists(env_path):
+                config_path = env_path
         if config_path is None:
             # Fall back to config.py next to the package
             parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

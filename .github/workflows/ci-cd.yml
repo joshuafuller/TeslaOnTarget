@@ -17,6 +17,7 @@ jobs:
         uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
+          python-version: '3.14'  # match the runtime Docker image
       - name: Install dependencies
         run: uv sync --frozen
       - name: Lint with flake8
@@ -32,6 +33,7 @@ jobs:
         uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
+          python-version: '3.14'  # match the runtime Docker image
       - name: Install dependencies
         run: uv sync --frozen
       - name: Run tests

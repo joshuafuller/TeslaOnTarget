@@ -3,8 +3,9 @@
 # ---- Build stage: resolve + install deps with uv into /app/.venv ----
 FROM python:3.14-slim AS builder
 
-# uv: fast, reproducible installs from uv.lock
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+# uv: fast, reproducible installs from uv.lock. Pinned for deterministic,
+# supply-chain-safe builds (Dependabot's docker ecosystem keeps it current).
+COPY --from=ghcr.io/astral-sh/uv:0.11.16 /uv /uvx /bin/
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
