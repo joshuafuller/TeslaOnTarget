@@ -39,7 +39,7 @@ dev = [
     "pytest>=8.0.0",
     "flake8>=7.0.0",
     "pytest-cov>=5.0.0",
-    "hypothesis>=6.156.1",
+    "hypothesis>=6.156.6",
     "mutmut>=3.0.0",
 ]
 
