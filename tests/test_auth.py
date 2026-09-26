@@ -105,6 +105,24 @@ def test_cache_cleanup_failure_still_exits_nonzero(tesla):
     assert cache_file.exists()
 
 
+def test_cache_cleanup_removes_symlink_target(tesla, tmp_path):
+    target = tmp_path / "persistent-cache.json"
+    cache_file = tmp_path / "cache.json"
+    cache_file.symlink_to(target)
+    tesla.cache_file = str(cache_file)
+    tesla.fetch_token.side_effect = lambda **_: target.write_text("{}")
+    tesla.authorized = False
+    tesla.authorization_url.return_value = "https://auth"
+
+    with patch("teslaontarget.auth.webbrowser.open"), \
+         patch("builtins.input", return_value="https://r?code=abc"), \
+         patch("teslaontarget.auth.Path.chmod", side_effect=OSError("denied")):
+        with pytest.raises(SystemExit, match="1"):
+            auth.main()
+
+    assert not target.exists()
+
+
 def test_browser_open_failure_prints_manual_url(tesla, capsys):
     tesla.authorized = False
     tesla.authorization_url.return_value = "https://auth"
