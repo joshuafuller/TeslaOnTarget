@@ -1,5 +1,6 @@
 """Tests for teslaontarget.auth.main (interactive Tesla auth, fully mocked)."""
 from unittest.mock import patch
+import stat
 
 import pytest
 
@@ -42,6 +43,21 @@ def test_fresh_auth_opens_browser_and_fetches_token(tesla):
         auth.main()
     wb.assert_called_once_with("https://auth")
     tesla.fetch_token.assert_called_once_with(authorization_response="https://r?code=abc")
+
+
+def test_fresh_auth_restricts_token_cache_permissions(tesla, tmp_path):
+    cache_file = tmp_path / "cache.json"
+    tesla.cache_file = str(cache_file)
+    tesla.authorized = False
+    tesla.authorization_url.return_value = "https://auth"
+    tesla.vehicle_list.return_value = []
+    tesla.fetch_token.side_effect = lambda **_: cache_file.write_text("{}")
+
+    with patch("teslaontarget.auth.webbrowser.open"), \
+         patch("builtins.input", return_value="https://r?code=abc"):
+        auth.main()
+
+    assert stat.S_IMODE(cache_file.stat().st_mode) == 0o600
 
 
 def test_browser_open_failure_prints_manual_url(tesla, capsys):

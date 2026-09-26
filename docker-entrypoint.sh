@@ -80,6 +80,7 @@ EOF
 # Function to check if authenticated
 is_authenticated() {
     if [ -f "/data/cache.json" ]; then
+        chmod 600 /data/cache.json
         # Check if the cache file has content
         if [ -s "/data/cache.json" ]; then
             return 0

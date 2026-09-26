@@ -2,6 +2,7 @@
 """Tesla authentication script to get a fresh token"""
 
 import webbrowser
+from pathlib import Path
 from teslapy import Tesla
 from .config_handler import load_config
 
@@ -61,6 +62,7 @@ def main():
     try:
         # Fetch token using the redirect URL
         tesla.fetch_token(authorization_response=redirect_url)
+        Path(tesla.cache_file).chmod(0o600)
         
         print()
         print("✓ Authentication successful!")
