@@ -34,7 +34,8 @@ def test_existing_cache_permission_failure_stops_before_use(tesla, capsys):
     Path(tesla.cache_file).write_text("{}")
     tesla.authorized = True
     with patch("teslaontarget.auth.Path.chmod", side_effect=OSError("denied")):
-        auth.main()
+        with pytest.raises(SystemExit, match="1"):
+            auth.main()
     assert "Cannot secure token cache permissions" in capsys.readouterr().out
     tesla.vehicle_list.assert_not_called()
 
@@ -83,7 +84,8 @@ def test_cache_permission_failure_is_handled(tesla, capsys):
     with patch("teslaontarget.auth.webbrowser.open"), \
          patch("builtins.input", return_value="https://r?code=abc"), \
          patch("teslaontarget.auth.Path.chmod", side_effect=OSError("denied")):
-        auth.main()
+        with pytest.raises(SystemExit, match="1"):
+            auth.main()
     assert "Authentication succeeded, but token cache permissions could not be secured" in capsys.readouterr().out
 
 

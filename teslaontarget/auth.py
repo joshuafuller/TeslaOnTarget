@@ -24,7 +24,7 @@ def main():
             cache_file.chmod(0o600)
         except OSError as e:
             print(f"✗ Cannot secure token cache permissions: {e}")
-            return
+            raise SystemExit(1) from e
     
     # Check if we already have a valid token
     if tesla.authorized:
@@ -74,7 +74,7 @@ def main():
             cache_file.chmod(0o600)
         except OSError as e:
             print(f"✗ Authentication succeeded, but token cache permissions could not be secured: {e}")
-            return
+            raise SystemExit(1) from e
         
         print()
         print("✓ Authentication successful!")
