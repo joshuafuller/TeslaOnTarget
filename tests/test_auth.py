@@ -1,5 +1,6 @@
 """Tests for teslaontarget.auth.main (interactive Tesla auth, fully mocked)."""
 from unittest.mock import patch
+from pathlib import Path
 import stat
 
 import pytest
@@ -17,11 +18,15 @@ def tesla(tmp_path):
 
 
 def test_already_authorized_tests_connection_and_returns(tesla, capsys):
+    cache_file = Path(tesla.cache_file)
+    cache_file.write_text("{}")
+    cache_file.chmod(0o644)
     tesla.authorized = True
     tesla.vehicle_list.return_value = [{"display_name": "Tron", "state": "online"}]
     auth.main()
     out = capsys.readouterr().out
     assert "Already authenticated" in out
+    assert stat.S_IMODE(cache_file.stat().st_mode) == 0o600
     tesla.fetch_token.assert_not_called()
 
 
@@ -70,7 +75,7 @@ def test_cache_permission_failure_is_handled(tesla, capsys):
          patch("builtins.input", return_value="https://r?code=abc"), \
          patch("teslaontarget.auth.Path.chmod", side_effect=OSError("denied")):
         auth.main()
-    assert "Authentication failed" in capsys.readouterr().out
+    assert "Authentication succeeded, but token cache permissions could not be secured" in capsys.readouterr().out
 
 
 def test_browser_open_failure_prints_manual_url(tesla, capsys):

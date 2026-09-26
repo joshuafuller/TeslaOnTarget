@@ -17,6 +17,14 @@ def main():
 
     # Initialize Tesla API
     tesla = Tesla(config.tesla_username)
+    cache_file = Path(tesla.cache_file)
+
+    if cache_file.exists():
+        try:
+            cache_file.chmod(0o600)
+        except OSError as e:
+            print(f"✗ Cannot secure token cache permissions: {e}")
+            return
     
     # Check if we already have a valid token
     if tesla.authorized:
@@ -62,7 +70,11 @@ def main():
     try:
         # Fetch token using the redirect URL
         tesla.fetch_token(authorization_response=redirect_url)
-        Path(tesla.cache_file).chmod(0o600)
+        try:
+            cache_file.chmod(0o600)
+        except OSError as e:
+            print(f"✗ Authentication succeeded, but token cache permissions could not be secured: {e}")
+            return
         
         print()
         print("✓ Authentication successful!")
