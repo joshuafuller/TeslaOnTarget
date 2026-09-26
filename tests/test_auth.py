@@ -87,6 +87,7 @@ def test_cache_permission_failure_is_handled(tesla, capsys):
         with pytest.raises(SystemExit, match="1"):
             auth.main()
     assert "Authentication succeeded, but token cache permissions could not be secured" in capsys.readouterr().out
+    assert not Path(tesla.cache_file).exists()
 
 
 def test_browser_open_failure_prints_manual_url(tesla, capsys):
