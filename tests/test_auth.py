@@ -30,6 +30,15 @@ def test_already_authorized_tests_connection_and_returns(tesla, capsys):
     tesla.fetch_token.assert_not_called()
 
 
+def test_existing_cache_permission_failure_stops_before_use(tesla, capsys):
+    Path(tesla.cache_file).write_text("{}")
+    tesla.authorized = True
+    with patch("teslaontarget.auth.Path.chmod", side_effect=OSError("denied")):
+        auth.main()
+    assert "Cannot secure token cache permissions" in capsys.readouterr().out
+    tesla.vehicle_list.assert_not_called()
+
+
 def test_authorized_but_token_invalid_falls_through_to_reauth(tesla):
     tesla.authorized = True
     # first vehicle_list (validation) fails, second (after fetch_token) succeeds
