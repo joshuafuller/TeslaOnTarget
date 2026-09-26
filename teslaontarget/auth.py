@@ -73,7 +73,10 @@ def main():
         try:
             cache_file.chmod(0o600)
         except OSError as e:
-            cache_file.unlink(missing_ok=True)
+            try:
+                cache_file.unlink(missing_ok=True)
+            except OSError:
+                pass
             print(f"✗ Authentication succeeded, but token cache permissions could not be secured: {e}")
             raise SystemExit(1) from e
         
