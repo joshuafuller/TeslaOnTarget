@@ -25,6 +25,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # ---- Runtime stage ----
 FROM python:3.14-slim
 
+# The runtime uses the prebuilt virtual environment and does not install packages.
+# Remove pip and its vendored build tooling from the attack surface.
+RUN python -m pip uninstall --yes pip
+
 LABEL org.opencontainers.image.title="TeslaOnTarget" \
       org.opencontainers.image.description="Bridge Tesla vehicles with TAK servers for real-time position tracking" \
       org.opencontainers.image.authors="Joshua Fuller" \

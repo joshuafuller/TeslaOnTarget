@@ -109,7 +109,7 @@ class TeslaCoT:
             cot_packet = generate_cot_packet(data)
             cot_bytes = format_cot_for_tak(cot_packet)
             
-            logger.info(f"Sending CoT for {data.get('display_name')} at {data.get('latitude')}, {data.get('longitude')}")
+            logger.debug(f"Sending CoT for {data.get('display_name')} at {data.get('latitude')}, {data.get('longitude')}")
             
             if self.tak_client.send_cot(cot_bytes):
                 logger.info(f"Successfully sent CoT packet for {data.get('vehicle_name', 'Unknown')} ({len(cot_bytes)} bytes)")
@@ -249,7 +249,7 @@ class TeslaCoT:
         if self._has_coordinates(initial_data):
             self.last_known_valid_data = initial_data
             self.save_last_position_to_file(initial_data)
-            logger.info(f"Saved initial position: {initial_data.get('latitude')}, {initial_data.get('longitude')}")
+            logger.debug(f"Saved initial position: {initial_data.get('latitude')}, {initial_data.get('longitude')}")
         return True
 
     def _classify_api_error(self, error_str):
@@ -358,7 +358,7 @@ class TeslaCoT:
         ap_state = relevant_data.get('autopilot_state')
         if ap_state is None and relevant_data.get('shift_state') in ['D', 'R']:
             logger.warning("autopilot_state field not available in Tesla API response - FSD detection may not work")
-        logger.info(f"Got vehicle data: lat={relevant_data.get('latitude')}, lon={relevant_data.get('longitude')}, speed={speed_display}, battery={relevant_data.get('battery_level')}%, autopilot_state={ap_state}, UID={relevant_data.get('UID')}, dead_reckoning={dr_status}")
+        logger.debug(f"Got vehicle data: lat={relevant_data.get('latitude')}, lon={relevant_data.get('longitude')}, speed={speed_display}, battery={relevant_data.get('battery_level')}%, autopilot_state={ap_state}, UID={relevant_data.get('UID')}, dead_reckoning={dr_status}")
 
         if self._has_coordinates(relevant_data):
             self._handle_valid_gps(relevant_data)
