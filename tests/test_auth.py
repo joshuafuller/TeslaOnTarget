@@ -8,8 +8,11 @@ from teslaontarget import auth
 
 
 @pytest.fixture
-def tesla():
+def tesla(tmp_path):
     with patch("teslaontarget.auth.Tesla") as T, patch("teslaontarget.auth.load_config"):
+        cache_file = tmp_path / "cache.json"
+        T.return_value.cache_file = str(cache_file)
+        T.return_value.fetch_token.side_effect = lambda **_: cache_file.write_text("{}")
         yield T.return_value
 
 
@@ -58,6 +61,16 @@ def test_fresh_auth_restricts_token_cache_permissions(tesla, tmp_path):
         auth.main()
 
     assert stat.S_IMODE(cache_file.stat().st_mode) == 0o600
+
+
+def test_cache_permission_failure_is_handled(tesla, capsys):
+    tesla.authorized = False
+    tesla.authorization_url.return_value = "https://auth"
+    with patch("teslaontarget.auth.webbrowser.open"), \
+         patch("builtins.input", return_value="https://r?code=abc"), \
+         patch("teslaontarget.auth.Path.chmod", side_effect=OSError("denied")):
+        auth.main()
+    assert "Authentication failed" in capsys.readouterr().out
 
 
 def test_browser_open_failure_prints_manual_url(tesla, capsys):
