@@ -1,5 +1,6 @@
 """Tests for teslaontarget.auth.main (interactive Tesla auth, fully mocked)."""
 from unittest.mock import patch
+from pathlib import Path
 import stat
 
 import pytest
@@ -17,12 +18,26 @@ def tesla(tmp_path):
 
 
 def test_already_authorized_tests_connection_and_returns(tesla, capsys):
+    cache_file = Path(tesla.cache_file)
+    cache_file.write_text("{}")
+    cache_file.chmod(0o644)
     tesla.authorized = True
     tesla.vehicle_list.return_value = [{"display_name": "Tron", "state": "online"}]
     auth.main()
     out = capsys.readouterr().out
     assert "Already authenticated" in out
+    assert stat.S_IMODE(cache_file.stat().st_mode) == 0o600
     tesla.fetch_token.assert_not_called()
+
+
+def test_existing_cache_permission_failure_stops_before_use(tesla, capsys):
+    Path(tesla.cache_file).write_text("{}")
+    tesla.authorized = True
+    with patch("teslaontarget.auth.Path.chmod", side_effect=OSError("denied")):
+        with pytest.raises(SystemExit, match="1"):
+            auth.main()
+    assert "Cannot secure token cache permissions" in capsys.readouterr().out
+    tesla.vehicle_list.assert_not_called()
 
 
 def test_authorized_but_token_invalid_falls_through_to_reauth(tesla):
@@ -69,8 +84,43 @@ def test_cache_permission_failure_is_handled(tesla, capsys):
     with patch("teslaontarget.auth.webbrowser.open"), \
          patch("builtins.input", return_value="https://r?code=abc"), \
          patch("teslaontarget.auth.Path.chmod", side_effect=OSError("denied")):
-        auth.main()
-    assert "Authentication failed" in capsys.readouterr().out
+        with pytest.raises(SystemExit, match="1"):
+            auth.main()
+    assert "Authentication succeeded, but token cache permissions could not be secured" in capsys.readouterr().out
+    assert not Path(tesla.cache_file).exists()
+
+
+def test_cache_cleanup_failure_still_exits_nonzero(tesla):
+    tesla.authorized = False
+    tesla.authorization_url.return_value = "https://auth"
+    cache_file = Path(tesla.cache_file)
+
+    with patch("teslaontarget.auth.webbrowser.open"), \
+         patch("builtins.input", return_value="https://r?code=abc"), \
+         patch("teslaontarget.auth.Path.chmod", side_effect=OSError("denied")), \
+         patch("teslaontarget.auth.Path.unlink", side_effect=OSError("also denied")):
+        with pytest.raises(SystemExit, match="1"):
+            auth.main()
+
+    assert cache_file.exists()
+
+
+def test_cache_cleanup_removes_symlink_target(tesla, tmp_path):
+    target = tmp_path / "persistent-cache.json"
+    cache_file = tmp_path / "cache.json"
+    cache_file.symlink_to(target)
+    tesla.cache_file = str(cache_file)
+    tesla.fetch_token.side_effect = lambda **_: target.write_text("{}")
+    tesla.authorized = False
+    tesla.authorization_url.return_value = "https://auth"
+
+    with patch("teslaontarget.auth.webbrowser.open"), \
+         patch("builtins.input", return_value="https://r?code=abc"), \
+         patch("teslaontarget.auth.Path.chmod", side_effect=OSError("denied")):
+        with pytest.raises(SystemExit, match="1"):
+            auth.main()
+
+    assert not target.exists()
 
 
 def test_browser_open_failure_prints_manual_url(tesla, capsys):
