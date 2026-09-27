@@ -12,6 +12,7 @@ dependencies = [
     # Tesla's Owner API began rejecting non-TLS-1.3 clients with HTTP 403.
     "teslapy>=2.9.2",
     "requests>=2.31.0",
+    "paho-mqtt>=2.1.0",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -32,6 +33,7 @@ Repository = "https://github.com/joshuafuller/TeslaOnTarget"
 [project.scripts]
 teslaontarget = "teslaontarget.cli:main"
 tesla-auth = "teslaontarget.auth:main"
+tesla-fleet-routes = "teslaontarget.fleet_routes:main"
 
 # PEP 735 dependency group; installed by `uv sync`, excluded by `uv sync --no-dev`.
 [dependency-groups]

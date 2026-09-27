@@ -19,7 +19,7 @@ create_config() {
         exit 1
     fi
     
-    if [ -z "$TESLA_USERNAME" ] && [ "$1" != "auth" ]; then
+    if [ -z "$TESLA_USERNAME" ] && [ "$1" != "auth" ] && [ "$1" != "fleet-routes" ]; then
         echo -e "${RED}ERROR: TESLA_USERNAME environment variable is required${NC}"
         echo "Example: docker run -e TESLA_USERNAME=your@email.com ..."
         exit 1
@@ -94,6 +94,10 @@ is_authenticated() {
 
 # Main logic based on command
 case "$1" in
+    fleet-routes)
+        create_config "fleet-routes"
+        exec python3 -m teslaontarget.fleet_routes
+        ;;
     auth|authenticate)
         echo -e "${BLUE}=== Tesla Authentication ===${NC}"
         echo
