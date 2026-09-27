@@ -66,7 +66,7 @@ def test_bridge_does_not_send_fake_route_for_metrics_only_route_line():
         "EgcNnXmEQhABEgcNmoAzQhACEgcNFKAyQhABEgcNCGaTQRAC"
         "EgcNlH6RQRABEgcN4AOPQRACEgcN95KLQRAC").encode())
     packets = [ET.fromstring(call.args[0]) for call in tak.send_cot.call_args_list]
-    assert packets == []
+    assert [packet.get("type") for packet in packets] == ["t-x-d-d", "t-x-d-d"]
 
 
 def test_invalid_route_inputs():
@@ -213,6 +213,20 @@ def test_bridge_sends_and_refreshes_fleet_position():
 
     bridge.refresh_positions()
     assert tak.send_cot.call_count == 2
+
+
+def test_vehicle_name_immediately_corrects_existing_objects():
+    tak = Mock()
+    bridge = FleetRouteBridge(tak)
+    base = "telemetry/VIN/v"
+    bridge.handle(f"{base}/Location", b'{"latitude":30.4,"longitude":-86.9}')
+    bridge.handle(f"{base}/RouteLine", ROUTE)
+
+    bridge.handle(f"{base}/VehicleName", b'"Tron"')
+
+    packets = [ET.fromstring(call.args[0]) for call in tak.send_cot.call_args_list[-2:]]
+    assert packets[0].find("./detail/contact").get("callsign") == "Tron"
+    assert packets[1].find("./detail/contact").get("callsign") == "Tron active route"
 
 
 def test_position_refresh_ignores_vehicle_without_location():

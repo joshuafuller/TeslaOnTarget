@@ -141,13 +141,14 @@ class FleetRouteBridge:
         self.tak.send_cot(format_cot_for_tak(packet))
 
     def _clear_navigation(self, uid, vehicle):
-        if not vehicle.get("route_active"):
+        if not vehicle.get("route_active") and vehicle.get("navigation_cleared"):
             return
         for suffix, cot_type in (("route", "u-d-f"),
                                  ("destination", "b-m-p-s-m")):
             self._send(generate_delete_packet(
                 f"{uid}-{suffix}", f"{uid}-{suffix}", cot_type))
         vehicle["route_active"] = False
+        vehicle["navigation_cleared"] = True
         vehicle.pop("RouteLine", None)
         vehicle.pop("DestinationLocation", None)
         vehicle.pop("DestinationName", None)
@@ -214,11 +215,20 @@ class FleetRouteBridge:
                                    callsign)
                 else:
                     vehicle["route_active"] = True
+                    vehicle["navigation_cleared"] = False
                     packet, fitted = fit_route_packet(uid, callsign, points)
                     self._send(packet)
                     self._send_destination(uid, vehicle)
                     logger.info("Sent active route for %s (%d/%d points)",
                                 callsign, len(fitted), len(points))
+            if field == "VehicleName":
+                self._send_position(uid, vehicle)
+                encoded = vehicle.get("RouteLine")
+                if vehicle.get("route_active") and encoded:
+                    points = decode_route_line(encoded)
+                    if points:
+                        packet, _ = fit_route_packet(uid, callsign, points)
+                        self._send(packet)
             if field in {"DestinationLocation", "DestinationName", "VehicleName",
                          "MilesToArrival", "MinutesToArrival",
                          "RouteTrafficMinutesDelay",
