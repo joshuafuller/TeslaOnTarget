@@ -10,7 +10,8 @@ from teslaontarget.cot import (generate_delete_packet,
                                generate_destination_packet,
                                generate_route_packet)
 from teslaontarget.fleet_routes import (FleetRouteBridge, decode_polyline,
-                                        decode_route_line, main)
+                                        decode_route_line, main,
+                                        simplify_route)
 
 ROUTE = b'"CiBfaXpsaEF+cmxnZEZfe2dlQ355d2xAX2t3ekNuYHtuSQ=="'
 
@@ -168,13 +169,19 @@ def test_bridge_bounds_long_route_and_keeps_processing():
         bridge.handle("telemetry/VIN/v/RouteLine", b'"long-route"')
     route = ET.fromstring(tak.send_cot.call_args.args[0])
     links = route.findall("./detail/link")
-    assert len(links) <= 500
+    assert len(tak.send_cot.call_args.args[0]) <= 60_000
+    assert len(links) < len(points)
     assert links[0].get("point") == "30.0,-87.0"
     assert links[-1].get("point") == "30.03247,-86.96753"
 
     bridge.handle("telemetry/VIN/v/DestinationLocation",
                   b'{"latitude":31,"longitude":-86}')
     assert ET.fromstring(tak.send_cot.call_args.args[0]).get("type") == "b-m-p-s-m"
+
+
+def test_route_simplification_preserves_significant_turns():
+    assert simplify_route([(0, 0), (0, 1), (1, 1)], 0.1) == [
+        (0, 0), (0, 1), (1, 1)]
 
 
 def test_bridge_refreshes_active_destination_metadata_only_with_valid_location():

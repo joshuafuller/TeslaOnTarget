@@ -4,6 +4,7 @@ import base64
 import hashlib
 import json
 import logging
+import math
 import os
 import threading
 import time
@@ -16,7 +17,7 @@ from .cot import (format_cot_for_tak, generate_cot_packet,
 from .tak_client import TAKClient
 
 logger = logging.getLogger(__name__)
-MAX_ROUTE_POINTS = 500
+MAX_TAK_PACKET_BYTES = 60_000
 
 
 def decode_polyline(encoded, precision=6):
@@ -77,12 +78,57 @@ def decode_route_line(encoded):
     return None
 
 
-def limit_route_points(points, limit=MAX_ROUTE_POINTS):
-    """Keep a representative, bounded route while preserving both endpoints."""
-    if len(points) <= limit:
+def simplify_route(points, tolerance):
+    """Simplify a route with Ramer-Douglas-Peucker, preserving key turns."""
+    if len(points) <= 2:
         return points
-    return [points[round(index * (len(points) - 1) / (limit - 1))]
-            for index in range(limit)]
+    keep = {0, len(points) - 1}
+    pending = [(0, len(points) - 1)]
+    while pending:
+        start_index, end_index = pending.pop()
+        start, end = points[start_index], points[end_index]
+        dy, dx = end[0] - start[0], end[1] - start[1]
+        length = math.hypot(dy, dx)
+        farthest, farthest_index = 0, None
+        for index in range(start_index + 1, end_index):
+            point = points[index]
+            distance = (math.hypot(point[0] - start[0], point[1] - start[1])
+                        if not length else
+                        abs(dx * (point[0] - start[0]) -
+                            dy * (point[1] - start[1])) / length)
+            if distance > farthest:
+                farthest, farthest_index = distance, index
+        if farthest_index is not None and farthest > tolerance:
+            keep.add(farthest_index)
+            pending.extend(((start_index, farthest_index),
+                            (farthest_index, end_index)))
+    return [points[index] for index in sorted(keep)]
+
+
+def fit_route_packet(uid, callsign, points, limit=MAX_TAK_PACKET_BYTES):
+    """Use the least simplification needed to fit TAK Server's frame limit."""
+    packet = generate_route_packet(uid, callsign, points)
+    if len(format_cot_for_tak(packet)) <= limit:
+        return packet, points
+
+    low, high = 0, 1e-7
+    while True:
+        fitted = simplify_route(points, high)
+        packet = generate_route_packet(uid, callsign, fitted)
+        if len(format_cot_for_tak(packet)) <= limit:
+            break
+        low, high = high, high * 2
+
+    best = (packet, fitted)
+    for _ in range(24):
+        tolerance = (low + high) / 2
+        fitted = simplify_route(points, tolerance)
+        packet = generate_route_packet(uid, callsign, fitted)
+        if len(format_cot_for_tak(packet)) <= limit:
+            high, best = tolerance, (packet, fitted)
+        else:
+            low = tolerance
+    return best
 
 
 class FleetRouteBridge:
@@ -168,11 +214,11 @@ class FleetRouteBridge:
                                    callsign)
                 else:
                     vehicle["route_active"] = True
-                    bounded = limit_route_points(points)
-                    self._send(generate_route_packet(uid, callsign, bounded))
+                    packet, fitted = fit_route_packet(uid, callsign, points)
+                    self._send(packet)
                     self._send_destination(uid, vehicle)
                     logger.info("Sent active route for %s (%d/%d points)",
-                                callsign, len(bounded), len(points))
+                                callsign, len(fitted), len(points))
             if field in {"DestinationLocation", "DestinationName", "VehicleName",
                          "MilesToArrival", "MinutesToArrival",
                          "RouteTrafficMinutesDelay",
