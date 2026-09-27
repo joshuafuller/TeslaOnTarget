@@ -205,6 +205,69 @@ def generate_cot_packet(data):
     return cot_xml
 
 
+def _event(uid, event_type, lat, lon, stale_minutes=5):
+    """Create the common CoT envelope used by live Fleet overlays."""
+    now = datetime.now(timezone.utc)
+
+    def stamp(value):
+        return value.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+    root = ET.Element("event", version="2.0", uid=uid, type=event_type,
+                      how="m-g", time=stamp(now), start=stamp(now),
+                      stale=stamp(now + timedelta(minutes=stale_minutes)))
+    ET.SubElement(root, "point", lat=str(lat), lon=str(lon), hae="9999999.0",
+                  ce="9999999.0", le="9999999.0")
+    return root
+
+
+def generate_route_packet(uid, callsign, points):
+    """Generate an ATAK freeform polyline for a decoded Tesla route."""
+    if len(points) < 2:
+        raise ValueError("route requires at least two points")
+    root = _event(f"{uid}-route", "u-d-f", *points[0])
+    detail = ET.SubElement(root, "detail")
+    # ATAK's DrawingShapeImporter builds geometry only from detail/link nodes;
+    # the event point is an envelope anchor and is not part of the line.
+    for lat, lon in points:
+        ET.SubElement(detail, "link", point=f"{lat},{lon}")
+    ET.SubElement(detail, "strokeColor", value="-16711681")  # opaque cyan
+    ET.SubElement(detail, "strokeWeight", value="4.0")
+    ET.SubElement(detail, "contact", callsign=f"{callsign} active route")
+    ET.SubElement(detail, "labels_on", value="false")
+    return ET.tostring(root, encoding="unicode")
+
+
+def generate_destination_packet(uid, callsign, location, name=None, trip=None):
+    """Generate the destination marker paired with a Tesla route."""
+    root = _event(f"{uid}-destination", "b-m-p-s-m",
+                  location["latitude"], location["longitude"])
+    detail = ET.SubElement(root, "detail")
+    ET.SubElement(detail, "contact", callsign=name or f"{callsign} destination")
+    ET.SubElement(detail, "color", argb="-16711681")
+    remarks = [f"Active destination for {callsign}"]
+    trip = trip or {}
+    if trip.get("MilesToArrival") is not None:
+        remarks.append(f'{trip["MilesToArrival"]:.1f} mi')
+    if trip.get("MinutesToArrival") is not None:
+        remarks.append(f'{trip["MinutesToArrival"]:.0f} min')
+    if trip.get("RouteTrafficMinutesDelay") is not None:
+        remarks.append(f'Traffic +{trip["RouteTrafficMinutesDelay"]:.0f} min')
+    if trip.get("ExpectedEnergyPercentAtTripArrival") is not None:
+        remarks.append(f'{trip["ExpectedEnergyPercentAtTripArrival"]:.0f}% at arrival')
+    ET.SubElement(detail, "remarks").text = " | ".join(remarks)
+    return ET.tostring(root, encoding="unicode")
+
+
+def generate_delete_packet(uid, target_uid, target_type):
+    """Generate an ATAK force-delete event for an existing map object."""
+    root = _event(f"{uid}-delete", "t-x-d-d", 0, 0)
+    detail = ET.SubElement(root, "detail")
+    ET.SubElement(detail, "link", uid=target_uid, relation="none",
+                  type=target_type)
+    ET.SubElement(detail, "__forcedelete")
+    return ET.tostring(root, encoding="unicode")
+
+
 def format_cot_for_tak(cot_xml):
     """Format CoT XML for TAK Protocol Version 0.
     

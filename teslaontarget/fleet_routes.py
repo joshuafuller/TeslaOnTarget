@@ -1,0 +1,151 @@
+"""Bridge Tesla Fleet Telemetry navigation fields from MQTT into TAK."""
+
+import hashlib
+import json
+import logging
+import os
+import threading
+import time
+
+import paho.mqtt.client as mqtt
+
+from .cot import (format_cot_for_tak, generate_cot_packet,
+                  generate_delete_packet, generate_destination_packet,
+                  generate_route_packet)
+from .tak_client import TAKClient
+
+logger = logging.getLogger(__name__)
+
+
+def decode_polyline(encoded, precision=6):
+    """Decode Google's signed-delta polyline format used by RouteLine."""
+    points, index, lat, lon, scale = [], 0, 0, 0, 10 ** precision
+    while index < len(encoded):
+        deltas = []
+        for _ in range(2):
+            result = shift = 0
+            while True:
+                if index >= len(encoded):
+                    raise ValueError("truncated polyline")
+                value = ord(encoded[index]) - 63
+                index += 1
+                result |= (value & 0x1F) << shift
+                shift += 5
+                if value < 0x20:
+                    break
+            deltas.append(~(result >> 1) if result & 1 else result >> 1)
+        lat += deltas[0]
+        lon += deltas[1]
+        points.append((lat / scale, lon / scale))
+    return points
+
+
+class FleetRouteBridge:
+    def __init__(self, tak_client):
+        self.tak = tak_client
+        self.state = {}
+        self.lock = threading.Lock()
+
+    def _send(self, packet):
+        self.tak.send_cot(format_cot_for_tak(packet))
+
+    def _clear_navigation(self, uid, vehicle):
+        if not vehicle.get("route_active"):
+            return
+        for suffix, cot_type in (("route", "u-d-f"),
+                                 ("destination", "b-m-p-s-m")):
+            self._send(generate_delete_packet(
+                f"{uid}-{suffix}", f"{uid}-{suffix}", cot_type))
+        vehicle["route_active"] = False
+        vehicle.pop("RouteLine", None)
+        vehicle.pop("DestinationLocation", None)
+        vehicle.pop("DestinationName", None)
+        logger.info("Cleared active navigation for %s",
+                    vehicle.get("VehicleName") or "Tesla")
+
+    def _send_destination(self, uid, vehicle):
+        location = vehicle.get("DestinationLocation")
+        if not vehicle.get("route_active") or not location:
+            return
+        if location.get("latitude") is None or location.get("longitude") is None:
+            return
+        callsign = vehicle.get("VehicleName") or "Tesla"
+        self._send(generate_destination_packet(
+            uid, callsign, location, vehicle.get("DestinationName"), vehicle))
+
+    def _send_position(self, uid, vehicle):
+        location = vehicle.get("Location")
+        if not location:
+            return
+        self._send(generate_cot_packet({
+            "UID": uid,
+            "display_name": vehicle.get("VehicleName") or "Tesla",
+            "vehicle_model": vehicle.get("CarType") or "Vehicle",
+            "latitude": location["latitude"],
+            "longitude": location["longitude"],
+            "heading": vehicle.get("GpsHeading") or 0,
+            "speed": vehicle.get("VehicleSpeed") or 0,
+            "battery_level": vehicle.get("Soc") or 0,
+        }))
+
+    def refresh_positions(self):
+        """Refresh cached PLI so stationary vehicles do not expire in ATAK."""
+        with self.lock:
+            for vin, vehicle in self.state.items():
+                uid = "TESLA-" + hashlib.sha256(vin.encode()).hexdigest()[:12]
+                self._send_position(uid, vehicle)
+
+    def heartbeat_forever(self, interval):
+        while True:
+            time.sleep(interval)
+            self.refresh_positions()
+
+    def handle(self, topic, payload):
+        parts = topic.split("/")
+        if len(parts) != 4 or parts[0] != "telemetry" or parts[2] != "v":
+            return
+        vin, field = parts[1], parts[3]
+        value = json.loads(payload)
+        with self.lock:
+            vehicle = self.state.setdefault(vin, {})
+            vehicle[field] = value
+            uid = "TESLA-" + hashlib.sha256(vin.encode()).hexdigest()[:12]
+            callsign = vehicle.get("VehicleName") or "Tesla"
+            if field == "Location":
+                self._send_position(uid, vehicle)
+            if field == "RouteLine" and not value:
+                self._clear_navigation(uid, vehicle)
+            elif field == "RouteLine":
+                points = decode_polyline(value)
+                self._send(generate_route_packet(uid, callsign, points))
+                vehicle["route_active"] = True
+                self._send_destination(uid, vehicle)
+                logger.info("Sent active route for %s (%d points)",
+                            callsign, len(points))
+            if field in {"DestinationLocation", "DestinationName", "VehicleName",
+                         "MilesToArrival", "MinutesToArrival",
+                         "RouteTrafficMinutesDelay",
+                         "ExpectedEnergyPercentAtTripArrival"}:
+                self._send_destination(uid, vehicle)
+
+
+def main():
+    logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
+    tak = TAKClient(f"tcp://{os.environ['TAK_SERVER']}:{os.getenv('TAK_PORT', '8085')}")
+    bridge = FleetRouteBridge(tak)
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2,
+                         client_id="teslaontarget-fleet-routes")
+    client.on_connect = lambda c, _u, _f, _r, _p: c.subscribe("telemetry/+/v/+", qos=1)
+    client.on_message = lambda _c, _u, message: bridge.handle(message.topic, message.payload)
+    client.connect(os.getenv("FLEET_MQTT_HOST", "127.0.0.1"),
+                   int(os.getenv("FLEET_MQTT_PORT", "1883")))
+    threading.Thread(
+        target=bridge.heartbeat_forever,
+        args=(int(os.getenv("PLI_HEARTBEAT_SECONDS", "60")),),
+        daemon=True,
+    ).start()
+    client.loop_forever()
+
+
+if __name__ == "__main__":
+    main()
