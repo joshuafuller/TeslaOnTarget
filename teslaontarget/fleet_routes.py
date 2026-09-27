@@ -1,5 +1,6 @@
 """Bridge Tesla Fleet Telemetry navigation fields from MQTT into TAK."""
 
+import base64
 import hashlib
 import json
 import logging
@@ -38,6 +39,41 @@ def decode_polyline(encoded, precision=6):
         lon += deltas[1]
         points.append((lat / scale, lon / scale))
     return points
+
+
+def decode_route_line(encoded):
+    """Extract field 1 (Google polyline6) from Tesla's base64 protobuf."""
+    data = base64.b64decode(encoded, validate=True)
+    index = 0
+
+    def varint():
+        nonlocal index
+        value = shift = 0
+        while index < len(data):
+            byte = data[index]
+            index += 1
+            value |= (byte & 0x7f) << shift
+            if byte < 0x80:
+                return value
+            shift += 7
+        raise ValueError("truncated RouteLine protobuf")
+
+    while index < len(data):
+        tag = varint()
+        field, wire = tag >> 3, tag & 7
+        if wire == 2:
+            size = varint()
+            value = data[index:index + size]
+            index += size
+            if field == 1:
+                return decode_polyline(value.decode("ascii"))
+        elif wire == 5:
+            index += 4
+        elif wire == 0:
+            varint()
+        else:
+            raise ValueError(f"unsupported RouteLine wire type {wire}")
+    return None
 
 
 class FleetRouteBridge:
@@ -116,12 +152,17 @@ class FleetRouteBridge:
             if field == "RouteLine" and not value:
                 self._clear_navigation(uid, vehicle)
             elif field == "RouteLine":
-                points = decode_polyline(value)
-                self._send(generate_route_packet(uid, callsign, points))
                 vehicle["route_active"] = True
+                points = decode_route_line(value)
+                if points:
+                    self._send(generate_route_packet(uid, callsign, points))
                 self._send_destination(uid, vehicle)
-                logger.info("Sent active route for %s (%d points)",
-                            callsign, len(points))
+                if points:
+                    logger.info("Sent active route for %s (%d points)",
+                                callsign, len(points))
+                else:
+                    logger.warning("RouteLine for %s contains no geometry",
+                                   callsign)
             if field in {"DestinationLocation", "DestinationName", "VehicleName",
                          "MilesToArrival", "MinutesToArrival",
                          "RouteTrafficMinutesDelay",

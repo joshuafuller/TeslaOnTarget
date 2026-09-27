@@ -1,3 +1,5 @@
+import base64
+import json
 import xml.etree.ElementTree as ET
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -7,7 +9,10 @@ import pytest
 from teslaontarget.cot import (generate_delete_packet,
                                generate_destination_packet,
                                generate_route_packet)
-from teslaontarget.fleet_routes import FleetRouteBridge, decode_polyline, main
+from teslaontarget.fleet_routes import (FleetRouteBridge, decode_polyline,
+                                        decode_route_line, main)
+
+ROUTE = b'"CiBfaXpsaEF+cmxnZEZfe2dlQ355d2xAX2t3ekNuYHtuSQ=="'
 
 
 def test_precision_six_polyline_and_atak_overlay():
@@ -19,6 +24,48 @@ def test_precision_six_polyline_and_atak_overlay():
     assert root.get("uid") == "TESLA-test-route"
     assert [link.get("point") for link in root.findall("./detail/link")] == [
         "38.5,-120.2", "40.7,-120.95", "43.252,-126.453"]
+
+
+def test_route_line_extracts_polyline_from_tesla_protobuf():
+    value = "CiBfaXpsaEF+cmxnZEZfe2dlQ355d2xAX2t3ekNuYHtuSQ=="
+    assert decode_route_line(value) == [
+        (38.5, -120.2), (40.7, -120.95), (43.252, -126.453)]
+
+
+def test_route_line_without_geometry_returns_none():
+    # Real Fleet Telemetry sample containing only field 2 route metrics.
+    value = ("EgcNnXmEQhABEgcNmoAzQhACEgcNFKAyQhABEgcNCGaTQRACEgcNlH6RQRAB"
+             "EgcN4AOPQRACEgcN95KLQRACEgcNOoCKQRACEgcNE62IQRABEgcNTeqGQRAC"
+             "EgcNadmEQRABEgcNVaFvQRACEgcNpC1sQRABEgcNJzJXQBACEgcNSx85QBAB"
+             "EgUNjq7CPhIHDU7x2D0QAQ==")
+    assert decode_route_line(value) is None
+
+
+@pytest.mark.parametrize("raw", [b"\x15\0\0\0\0", b"\x10\x01"])
+def test_route_line_skips_known_non_geometry_wire_types(raw):
+    assert decode_route_line(base64.b64encode(raw).decode()) is None
+
+
+@pytest.mark.parametrize("raw, message", [
+    (b"\x80", "truncated RouteLine protobuf"),
+    (b"\x09", "unsupported RouteLine wire type 1"),
+])
+def test_route_line_rejects_malformed_protobuf(raw, message):
+    with pytest.raises(ValueError, match=message):
+        decode_route_line(base64.b64encode(raw).decode())
+
+
+def test_bridge_does_not_send_fake_route_for_metrics_only_route_line():
+    tak = Mock()
+    bridge = FleetRouteBridge(tak)
+    base = "telemetry/VIN/v"
+    bridge.handle(f"{base}/DestinationLocation",
+                  b'{"latitude":30.422536,"longitude":-86.696005}')
+    bridge.handle(f"{base}/RouteLine", json.dumps(
+        "EgcNnXmEQhABEgcNmoAzQhACEgcNFKAyQhABEgcNCGaTQRAC"
+        "EgcNlH6RQRABEgcN4AOPQRACEgcN95KLQRAC").encode())
+    packets = [ET.fromstring(call.args[0]) for call in tak.send_cot.call_args_list]
+    assert [packet.get("type") for packet in packets] == ["b-m-p-s-m"]
 
 
 def test_invalid_route_inputs():
@@ -66,7 +113,7 @@ def test_bridge_ignores_other_topics_and_sends_route_and_destination():
     bridge.handle(f"{base}/VehicleName", b'"Tron"')
     bridge.handle(f"{base}/DestinationLocation", b'{"latitude":1,"longitude":2}')
     bridge.handle(f"{base}/DestinationName", b'"Publix"')
-    bridge.handle(f"{base}/RouteLine", b'"_izlhA~rlgdF_{geC~ywl@"')
+    bridge.handle(f"{base}/RouteLine", ROUTE)
     assert tak.send_cot.call_count == 2
     assert b"u-d-f" in tak.send_cot.call_args_list[-2].args[0]
     assert b"Publix" in tak.send_cot.call_args.args[0]
@@ -75,7 +122,7 @@ def test_bridge_ignores_other_topics_and_sends_route_and_destination():
 def test_bridge_replaces_one_route_per_vehicle_and_clears_navigation():
     tak = Mock()
     bridge = FleetRouteBridge(tak)
-    route = b'"_izlhA~rlgdF_{geC~ywl@"'
+    route = ROUTE
     bridge.handle("telemetry/VIN/v/RouteLine", route)
     first = ET.fromstring(tak.send_cot.call_args.args[0])
     bridge.handle("telemetry/VIN/v/RouteLine", route)
@@ -97,7 +144,7 @@ def test_bridge_refreshes_active_destination_metadata_only_with_valid_location()
     tak = Mock()
     bridge = FleetRouteBridge(tak)
     base = "telemetry/VIN/v"
-    bridge.handle(f"{base}/RouteLine", b'"_izlhA~rlgdF_{geC~ywl@"')
+    bridge.handle(f"{base}/RouteLine", ROUTE)
     bridge.handle(f"{base}/DestinationLocation", b'{"latitude":null,"longitude":2}')
     assert tak.send_cot.call_count == 1
     bridge.handle(f"{base}/DestinationLocation", b'{"latitude":1,"longitude":2}')
