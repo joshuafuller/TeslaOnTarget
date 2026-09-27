@@ -1,3 +1,4 @@
+import base64
 import json
 import xml.etree.ElementTree as ET
 from types import SimpleNamespace
@@ -38,6 +39,20 @@ def test_route_line_without_geometry_returns_none():
              "EgcNadmEQRABEgcNVaFvQRACEgcNpC1sQRABEgcNJzJXQBACEgcNSx85QBAB"
              "EgUNjq7CPhIHDU7x2D0QAQ==")
     assert decode_route_line(value) is None
+
+
+@pytest.mark.parametrize("raw", [b"\x15\0\0\0\0", b"\x10\x01"])
+def test_route_line_skips_known_non_geometry_wire_types(raw):
+    assert decode_route_line(base64.b64encode(raw).decode()) is None
+
+
+@pytest.mark.parametrize("raw, message", [
+    (b"\x80", "truncated RouteLine protobuf"),
+    (b"\x09", "unsupported RouteLine wire type 1"),
+])
+def test_route_line_rejects_malformed_protobuf(raw, message):
+    with pytest.raises(ValueError, match=message):
+        decode_route_line(base64.b64encode(raw).decode())
 
 
 def test_bridge_does_not_send_fake_route_for_metrics_only_route_line():
