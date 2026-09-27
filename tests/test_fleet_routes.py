@@ -65,7 +65,7 @@ def test_bridge_does_not_send_fake_route_for_metrics_only_route_line():
         "EgcNnXmEQhABEgcNmoAzQhACEgcNFKAyQhABEgcNCGaTQRAC"
         "EgcNlH6RQRABEgcN4AOPQRACEgcN95KLQRAC").encode())
     packets = [ET.fromstring(call.args[0]) for call in tak.send_cot.call_args_list]
-    assert [packet.get("type") for packet in packets] == ["b-m-p-s-m"]
+    assert packets == []
 
 
 def test_invalid_route_inputs():
@@ -138,6 +138,43 @@ def test_bridge_replaces_one_route_per_vehicle_and_clears_navigation():
     count = tak.send_cot.call_count
     bridge.handle("telemetry/VIN/v/RouteLine", b"null")
     assert tak.send_cot.call_count == count
+
+
+def test_bridge_clears_navigation_when_cancel_emits_metrics_only_route():
+    tak = Mock()
+    bridge = FleetRouteBridge(tak)
+    bridge.handle("telemetry/VIN/v/RouteLine", ROUTE)
+    route_uid = ET.fromstring(tak.send_cot.call_args.args[0]).get("uid")
+
+    bridge.handle("telemetry/VIN/v/DestinationName", b"null")
+    bridge.handle("telemetry/VIN/v/MilesToArrival", b"null")
+    bridge.handle("telemetry/VIN/v/MinutesToArrival", b"null")
+    bridge.handle("telemetry/VIN/v/RouteLine", b'"EgA="')
+
+    deletes = [ET.fromstring(call.args[0]) for call in tak.send_cot.call_args_list[-2:]]
+    assert [event.find("./detail/link").get("uid") for event in deletes] == [
+        route_uid, route_uid.replace("-route", "-destination")]
+    assert bridge.state["VIN"]["route_active"] is False
+
+
+def test_bridge_bounds_long_route_and_keeps_processing():
+    tak = Mock()
+    bridge = FleetRouteBridge(tak)
+    points = [(30 + index / 100_000, -87 + index / 100_000)
+              for index in range(3_248)]
+
+    with patch("teslaontarget.fleet_routes.decode_route_line",
+               return_value=points):
+        bridge.handle("telemetry/VIN/v/RouteLine", b'"long-route"')
+    route = ET.fromstring(tak.send_cot.call_args.args[0])
+    links = route.findall("./detail/link")
+    assert len(links) <= 500
+    assert links[0].get("point") == "30.0,-87.0"
+    assert links[-1].get("point") == "30.03247,-86.96753"
+
+    bridge.handle("telemetry/VIN/v/DestinationLocation",
+                  b'{"latitude":31,"longitude":-86}')
+    assert ET.fromstring(tak.send_cot.call_args.args[0]).get("type") == "b-m-p-s-m"
 
 
 def test_bridge_refreshes_active_destination_metadata_only_with_valid_location():

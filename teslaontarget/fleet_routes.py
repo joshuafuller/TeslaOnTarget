@@ -16,6 +16,7 @@ from .cot import (format_cot_for_tak, generate_cot_packet,
 from .tak_client import TAKClient
 
 logger = logging.getLogger(__name__)
+MAX_ROUTE_POINTS = 500
 
 
 def decode_polyline(encoded, precision=6):
@@ -74,6 +75,14 @@ def decode_route_line(encoded):
         else:
             raise ValueError(f"unsupported RouteLine wire type {wire}")
     return None
+
+
+def limit_route_points(points, limit=MAX_ROUTE_POINTS):
+    """Keep a representative, bounded route while preserving both endpoints."""
+    if len(points) <= limit:
+        return points
+    return [points[round(index * (len(points) - 1) / (limit - 1))]
+            for index in range(limit)]
 
 
 class FleetRouteBridge:
@@ -152,17 +161,18 @@ class FleetRouteBridge:
             if field == "RouteLine" and not value:
                 self._clear_navigation(uid, vehicle)
             elif field == "RouteLine":
-                vehicle["route_active"] = True
                 points = decode_route_line(value)
-                if points:
-                    self._send(generate_route_packet(uid, callsign, points))
-                self._send_destination(uid, vehicle)
-                if points:
-                    logger.info("Sent active route for %s (%d points)",
-                                callsign, len(points))
-                else:
+                if not points:
+                    self._clear_navigation(uid, vehicle)
                     logger.warning("RouteLine for %s contains no geometry",
                                    callsign)
+                else:
+                    vehicle["route_active"] = True
+                    bounded = limit_route_points(points)
+                    self._send(generate_route_packet(uid, callsign, bounded))
+                    self._send_destination(uid, vehicle)
+                    logger.info("Sent active route for %s (%d/%d points)",
+                                callsign, len(bounded), len(points))
             if field in {"DestinationLocation", "DestinationName", "VehicleName",
                          "MilesToArrival", "MinutesToArrival",
                          "RouteTrafficMinutesDelay",
