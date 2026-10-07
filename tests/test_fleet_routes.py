@@ -10,7 +10,7 @@ from teslaontarget.cot import (generate_delete_packet,
                                generate_destination_packet,
                                generate_route_packet)
 from teslaontarget.fleet_routes import (FleetRouteBridge, decode_polyline,
-                                        decode_route_line, main,
+                                        decode_route_line, fit_route_packet, main,
                                         simplify_route)
 
 ROUTE = b'"CiBfaXpsaEF+cmxnZEZfe2dlQ355d2xAX2t3ekNuYHtuSQ=="'
@@ -182,6 +182,25 @@ def test_bridge_bounds_long_route_and_keeps_processing():
 def test_route_simplification_preserves_significant_turns():
     assert simplify_route([(0, 0), (0, 1), (1, 1)], 0.1) == [
         (0, 0), (0, 1), (1, 1)]
+
+
+def test_route_fitting_preserves_endpoints_under_a_small_frame_limit():
+    points = [(30 + index / 100_000, -87 + (index % 3) / 100_000)
+              for index in range(200)]
+    packet, fitted = fit_route_packet("id", "Tron", points, limit=1500)
+    assert len(packet.encode() + b"\n") <= 1500
+    assert fitted[0] == points[0]
+    assert fitted[-1] == points[-1]
+    assert 2 <= len(fitted) < len(points)
+    assert simplify_route(points[:2], 1) == points[:2]
+
+
+def test_vehicle_name_does_not_republish_a_route_without_geometry():
+    tak = Mock()
+    bridge = FleetRouteBridge(tak)
+    bridge.state["VIN"] = {"route_active": True, "RouteLine": "EgA="}
+    bridge.handle("telemetry/VIN/v/VehicleName", b'"Tron"')
+    assert not tak.send_cot.called
 
 
 def test_bridge_refreshes_active_destination_metadata_only_with_valid_location():
