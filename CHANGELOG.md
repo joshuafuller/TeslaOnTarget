@@ -5,6 +5,28 @@ All notable changes to TeslaOnTarget will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0](https://github.com/joshuafuller/TeslaOnTarget/compare/v1.2.1...v1.3.0) (2026-10-07)
+
+
+### Features
+
+* bridge Fleet Telemetry routes into TAK ([203214a](https://github.com/joshuafuller/TeslaOnTarget/commit/203214a7b199e84effae04f3e178a4bb18146821))
+* bridge Fleet Telemetry routes into TAK ([f4a8950](https://github.com/joshuafuller/TeslaOnTarget/commit/f4a895022c1244e9fecd68821bb67de3cb48238f))
+
+
+### Bug Fixes
+
+* adapt route detail to TAK frame limit ([c5d3a6f](https://github.com/joshuafuller/TeslaOnTarget/commit/c5d3a6f6fd600d1837e63ee3ba452fbb7d16ab36))
+* adapt route detail to TAK frame limit ([7133872](https://github.com/joshuafuller/TeslaOnTarget/commit/7133872b7bf0f1ca8bd235281bdc1283af015253))
+* bound and clear Fleet routes ([6a7be63](https://github.com/joshuafuller/TeslaOnTarget/commit/6a7be63aa8f372867055cabd150e888b1a0b21f2))
+* bound and clear Fleet routes ([954de34](https://github.com/joshuafuller/TeslaOnTarget/commit/954de34bf0430016246459641e4f643c8c8eb9f3))
+* decode Tesla RouteLine protobuf geometry ([c2063c6](https://github.com/joshuafuller/TeslaOnTarget/commit/c2063c675603d1922618387e1ea5b7c1ad2cdc39))
+* decode Tesla RouteLine protobuf geometry ([d9c9bd7](https://github.com/joshuafuller/TeslaOnTarget/commit/d9c9bd7a051e9d091c8cdb1b666fa22e53823efc))
+* preserve Fleet vehicle identity ([35f5bc4](https://github.com/joshuafuller/TeslaOnTarget/commit/35f5bc46c2f912ae3ef24f7d8633acee53f4dc42))
+* preserve Fleet vehicle identity ([59198f2](https://github.com/joshuafuller/TeslaOnTarget/commit/59198f2e6aff80cfb2d55c73ac0ff524c7a4f525))
+* secure existing token caches ([#61](https://github.com/joshuafuller/TeslaOnTarget/issues/61)) ([e0a9b6f](https://github.com/joshuafuller/TeslaOnTarget/commit/e0a9b6f2716f7f4baeb7e360926a62421f4152d1))
+* **security:** protect tokens and trim runtime exposure ([#59](https://github.com/joshuafuller/TeslaOnTarget/issues/59)) ([c396d82](https://github.com/joshuafuller/TeslaOnTarget/commit/c396d82ccad146cb57e4fea1244cc2172ff7af13))
+
 ## [1.2.1](https://github.com/joshuafuller/TeslaOnTarget/compare/v1.2.0...v1.2.1) (2026-06-26)
 
 
