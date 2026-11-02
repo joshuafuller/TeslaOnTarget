@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.4
 
 # ---- Build stage: resolve + install deps with uv into /app/.venv ----
-FROM python:3.14-slim AS builder
+FROM python:3.15-slim AS builder
 
 # uv: fast, reproducible installs from uv.lock. Pinned for deterministic,
 # supply-chain-safe builds (Dependabot's docker ecosystem keeps it current).
@@ -23,7 +23,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
 # ---- Runtime stage ----
-FROM python:3.14-slim
+FROM python:3.15-slim
 
 # The runtime uses the prebuilt virtual environment and does not install packages.
 # Remove pip and its vendored build tooling from the attack surface.
